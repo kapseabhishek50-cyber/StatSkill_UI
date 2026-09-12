@@ -81,6 +81,7 @@ enrollment, official data, and recommendation eligibility.
 | Admin | `admin/*` incl. `analytics`, `providers`, `course-sync`, `audit-logs` (ADMIN) |
 | Search | `search?q=` — courses/skills/communities/paths/quizzes |
 | Health | `health{,/detailed}` |
+| Public stats | `GET stats/public` — unauthenticated landing-page counts; seed snapshot with `live: false` if Mongo is down (bare payload, no envelope) |
 
 Conventions: success `{success, data, message}`; errors
 `{success:false, message, code, errors[]}`; pagination

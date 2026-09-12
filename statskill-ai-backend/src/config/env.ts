@@ -74,6 +74,9 @@ const schema = z.object({
   RATE_LIMIT_AUTH_MAX: z.coerce.number().default(30),
   RATE_LIMIT_AI_MAX: z.coerce.number().default(40),
 
+  /** How long the public landing-page stats payload is reused (protects Mongo from traffic spikes). */
+  PUBLIC_STATS_CACHE_TTL_SEC: z.coerce.number().int().min(0).max(3600).default(15),
+
   IGOT_API_URL: z.string().optional(),
   IGOT_API_KEY: z.string().optional(),
   NSSTA_API_URL: z.string().optional(),
