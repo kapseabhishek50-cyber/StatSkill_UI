@@ -536,6 +536,74 @@ Requires `requireAuth` and `requireRole('admin')`.
 
 ---
 
+## Public Endpoints (no authentication)
+
+### GET /stats/public
+Landing-page platform snapshot. Unauthenticated by design — it is embedded by the
+public marketing site — and it is the only endpoint that returns its payload
+**without** the `{ "success": true, "data": ... }` envelope, because the page reads
+it with a plain `fetch()`.
+
+Both backends serve this identical contract:
+
+- prototype API (`server/`, port 4000) — `server/src/routes/publicStats.js`
+- TypeScript API (`statskill-ai-backend/`, port 5000) — `src/routes/publicStats.routes.ts`
+
+so the frontend can be pointed at either without a code change.
+
+```bash
+curl -s http://localhost:4000/api/stats/public | jq '.stats'
+```
+
+Response:
+
+```json
+{
+  "live": true,
+  "source": "database",
+  "generatedAt": "2026-09-12T08:00:00.000Z",
+  "stats": {
+    "officers": 15,
+    "competencies": 33,
+    "courses": 22,
+    "departments": 3,
+    "jobRoles": 5,
+    "assessments": 1,
+    "quizzes": 4,
+    "competencyRecords": 33,
+    "communities": 3
+  },
+  "competencies": [{ "code": "AI_ML", "name": "AI/ML", "category": "TECHNICAL" }],
+  "categories": [{ "category": "STATISTICAL", "count": 10 }],
+  "courses": [
+    {
+      "code": "nssta-ml-stat-001",
+      "title": "Machine Learning for Statistical Analysis",
+      "provider": "NSSTA",
+      "rating": 4.8,
+      "durationHours": 40,
+      "level": "ADVANCED"
+    }
+  ],
+  "health": { "db": "up", "aiProvider": "mock", "aiConfigured": false }
+}
+```
+
+Notes:
+
+- `live: false` / `source: "snapshot"` means MongoDB was unreachable and the bundled
+  seed snapshot is being served. The route still answers `200` — a visitor never sees
+  an error — and the UI labels the numbers accordingly instead of claiming they are live.
+- Every figure is an aggregate count. No names, emails, scores, object ids, tokens or
+  connection strings are ever returned.
+- `officers` counts active accounts only; usage figures are zero on a fresh install.
+- `departments` is the number of distinct departments that have members, never who is in them.
+- The TypeScript API caches the payload for `PUBLIC_STATS_CACHE_TTL_SEC` (default 15s)
+  and is exempt from the global rate limit, since a shared office NAT would otherwise
+  exhaust one IP's budget from landing-page polls alone.
+
+---
+
 ## Error Codes
 
 | Code | Description |
