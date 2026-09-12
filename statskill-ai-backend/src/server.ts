@@ -6,8 +6,21 @@ import { syncJob } from './jobs/sync.job';
 
 const log = logger;
 
+const ensureDemoSeed = async (): Promise<void> => {
+  if (env.NODE_ENV === 'production' || process.env.SEED_ON_START === 'false') return;
+
+  const { User } = await import('./models/User');
+  const count = await User.countDocuments();
+  if (count > 0) return;
+
+  log.info('No users found in the database — seeding demo users for development login/register');
+  const { seed } = await import('./scripts/seed');
+  await seed();
+};
+
 const start = async (): Promise<void> => {
   await connectDatabase();
+  await ensureDemoSeed();
 
   const app = createApp();
   const server = app.listen(env.PORT, '0.0.0.0', () => {

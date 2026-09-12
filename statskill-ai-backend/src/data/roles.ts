@@ -13,6 +13,7 @@ export const ROLE_SEED: RoleSeed[] = [
   {
     name: 'Statistical Officer',
     code: 'STATISTICAL_OFFICER',
+    department: 'National Statistical Office',
     description: 'Designs, collects and analyses official statistics in a statistical division.',
     requirements: {
       SURVEY_DESIGN: 75,
@@ -34,6 +35,7 @@ export const ROLE_SEED: RoleSeed[] = [
   {
     name: 'Data Scientist (Official Statistics)',
     code: 'DATA_SCIENTIST_OSS',
+    department: 'National Statistical Office',
     description: 'Applies advanced analytics and ML to official data streams.',
     requirements: {
       PYTHON: 85,
@@ -51,6 +53,7 @@ export const ROLE_SEED: RoleSeed[] = [
   {
     name: 'Training Officer',
     code: 'TRAINING_OFFICER',
+    department: 'NSSTA',
     description: 'Plans and delivers training for statistical personnel.',
     requirements: {
       COMMUNICATION: 80,
@@ -65,6 +68,7 @@ export const ROLE_SEED: RoleSeed[] = [
   {
     name: 'IT Officer (Statistical Systems)',
     code: 'IT_OFFICER',
+    department: 'National Statistical Office',
     description: 'Builds and secures statistical IT systems.',
     requirements: {
       SQL: 80,
@@ -80,6 +84,7 @@ export const ROLE_SEED: RoleSeed[] = [
   {
     name: 'Administrative Officer',
     code: 'ADMINISTRATIVE_OFFICER',
+    department: 'MoSPI',
     description: 'Supports administration of statistical programmes.',
     requirements: {
       COMMUNICATION: 65,

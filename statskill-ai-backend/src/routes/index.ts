@@ -20,7 +20,10 @@ import adminRoutes from './admin.routes';
 import healthRoutes from './health.routes';
 import searchRoutes from './search.routes';
 
+import statsRoutes from './stats.routes';
+import leaderboardRoutes from './leaderboard.routes';
 
+import publicStatsRoutes from './publicStats.routes';
 const router = Router();
 
 router.use('/auth', authRoutes);

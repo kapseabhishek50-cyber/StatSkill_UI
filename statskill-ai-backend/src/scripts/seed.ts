@@ -55,11 +55,13 @@ const LEARNER_PASSWORD = 'Officer@123';
 const TRAINER_PASSWORD = 'Trainer@123';
 const ADMIN_PASSWORD = 'Admin@123';
 
-const seed = async (): Promise<void> => {
+export const seed = async (): Promise<void> => {
   if (env.isProduction) {
     throw new Error('Refusing to seed demo data in production');
   }
-  await connectDatabase();
+  if (mongoose.connection.readyState === 0) {
+    await connectDatabase();
+  }
   log.info('Clearing existing collections…');
   await Promise.all([
     Competency.deleteMany({}), Role.deleteMany({}), Achievement.deleteMany({}), User.deleteMany({}),
@@ -415,13 +417,20 @@ const seed = async (): Promise<void> => {
   log.info(`   • admin@mospi.gov.in         (ADMIN — ${ADMIN_PASSWORD})`);
 };
 
-seed()
-  .then(async () => {
-    await disconnectDatabase();
-    process.exit(0);
-  })
-  .catch(async (err) => {
-    log.error({ err: err.message, stack: err.stack }, 'Seed failed');
-    await disconnectDatabase().catch(() => undefined);
-    process.exit(1);
-  });
+const isRunDirectly =
+  typeof process.argv[1] === 'string' &&
+  process.argv[1].toLowerCase().endsWith('seed.ts') ||
+  process.argv[1].toLowerCase().endsWith('seed.js');
+
+if (isRunDirectly) {
+  seed()
+    .then(async () => {
+      await disconnectDatabase();
+      process.exit(0);
+    })
+    .catch(async (err) => {
+      log.error({ err: err.message, stack: err.stack }, 'Seed failed');
+      await disconnectDatabase().catch(() => undefined);
+      process.exit(1);
+    });
+}
