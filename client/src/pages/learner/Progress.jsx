@@ -8,23 +8,31 @@ import {
   ShieldCheck,
   Zap
 } from 'lucide-react';
+import { useMemo } from 'react';
 import CompetencyMeter from '../../components/CompetencyMeter.jsx';
 import { Card, Empty, ErrorNote, Loading, StatTile } from '../../components/ui.jsx';
 import { useApi } from '../../hooks/useApi.js';
-import { endpoints, formatDate, levelLabel } from '../../lib/index.js';
+import { endpoints, formatDate } from '../../lib/index.js';
+import { attemptToRow, gapToRow, scoreToLevel } from '../../lib/adapters.js';
 
 export default function Progress() {
   const mine = useApi(endpoints.myCompetencies);
   const quizzes = useApi(endpoints.quizHistory);
-  const path = useApi(endpoints.recommendations);
-
-  if (mine.loading || quizzes.loading || path.loading) {
-    return <Loading label="Compiling verified competency analytics" />;
-  }
+  const gapsApi = useApi(endpoints.skillGaps);
 
   const held = mine.data?.competencies ?? [];
-  const results = quizzes.data?.results ?? [];
-  const gaps = path.data?.gaps ?? [];
+  const results = useMemo(
+    () => (quizzes.data?.attempts ?? []).map(attemptToRow),
+    [quizzes.data],
+  );
+  const gaps = useMemo(
+    () => (gapsApi.data?.skillGaps ?? []).map((gap) => gapToRow(gap)),
+    [gapsApi.data],
+  );
+
+  if (mine.loading || quizzes.loading || gapsApi.loading) {
+    return <Loading label="Compiling verified competency analytics" />;
+  }
 
   const passedQuizzes = results.filter((r) => r.passed);
   const totalVerifiedLevels = passedQuizzes.length;
@@ -88,9 +96,10 @@ export default function Progress() {
                     currentLevel={entry.currentLevel}
                     requiredLevel={req?.requiredLevel ?? null}
                   />
-                  {entry.lastAssessmentAt && (
+                  {entry.lastAssessedAt && (
                     <p className="text-[11px] text-ink-muted">
-                      Last validated via quiz on {formatDate(entry.lastAssessmentAt)}
+                      Last assessed on {formatDate(entry.lastAssessedAt)}
+                      {entry.source ? ` · ${String(entry.source).toLowerCase().replace('_', ' ')}` : ''}
                     </p>
                   )}
                 </div>
@@ -119,7 +128,7 @@ export default function Progress() {
                 <div className="space-y-0.5 flex-1">
                   <p className="text-[13px] font-bold text-ink">{q.competency?.name || 'Skill Assessment'}</p>
                   <p className="text-xs text-ink-2">
-                    Advanced to Level {q.targetLevel} · Score: {q.scorePct}%
+                    Cleared with {q.scorePct}%{q.totalQuestions ? ` · ${q.correctAnswers}/${q.totalQuestions} correct` : ''}
                   </p>
                   <p className="text-[11px] text-ink-muted">{formatDate(q.createdAt)}</p>
                 </div>

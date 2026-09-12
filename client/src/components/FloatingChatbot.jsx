@@ -33,13 +33,13 @@ export default function FloatingChatbot() {
     setLoading(true);
 
     try {
-      const res = await api.post(endpoints.assistant, { question: text });
+      const res = await api.post(endpoints.assistant, { message: text });
       setMessages((prev) => [
         ...prev,
         {
           role: 'assistant',
-          content: res.answer || 'I am ready to help you navigate your official statistical learning pathway.',
-          source: res.source,
+          content: res.reply || 'I am ready to help you navigate your official statistical learning pathway.',
+          source: res.provider,
         },
       ]);
     } catch (err) {

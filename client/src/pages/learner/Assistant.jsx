@@ -15,8 +15,11 @@ export default function Assistant() {
   const [question, setQuestion] = useState('');
   const [messages, setMessages] = useState([]);
   const ask = useMutation(async (value) => {
-    const result = await api.post(endpoints.assistant, { question: value });
-    setMessages((current) => [...current, { question: value, ...result }]);
+    const result = await api.post(endpoints.assistant, { message: value });
+    setMessages((current) => [
+      ...current,
+      { question: value, answer: result.reply, source: result.provider, fallback: result.fallback },
+    ]);
     return result;
   });
 
@@ -54,9 +57,12 @@ export default function Assistant() {
           {messages.map((message, index) => (
             <div key={`${message.question}-${index}`} className="space-y-2">
               <p className="rounded-md bg-surface-2 p-3 text-sm text-ink">{message.question}</p>
-              <div className="border-l-2 border-[var(--series-1)] pl-3 text-sm text-ink-2">
+              <div className="border-l-2 border-[var(--series-1)] pl-3 text-sm text-ink-2 whitespace-pre-wrap">
                 {message.answer}
-                <p className="mt-2 text-[11px] text-ink-muted">Based on your current role record · {message.source}</p>
+                <p className="mt-2 text-[11px] text-ink-muted">
+                  Based on your current role record · {message.source}
+                  {message.fallback ? ' · offline summary' : ''}
+                </p>
               </div>
             </div>
           ))}

@@ -22,9 +22,11 @@ export default function QuizRunner({ attempt, onSubmit, submitting, error }) {
       {/* Question Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-lg font-bold text-ink">{attempt.competency?.name}</h1>
+          <h1 className="text-lg font-bold text-ink">{attempt.title ?? attempt.competency?.name}</h1>
           <p className="mt-0.5 text-xs text-ink-2">
-            Level {attempt.targetLevel} · {levelLabel(attempt.targetLevel)} • 70% accuracy needed
+            {attempt.targetLevel !== undefined && attempt.targetLevel !== null
+              ? <>Level {attempt.targetLevel} · {levelLabel(attempt.targetLevel)} • 70% accuracy needed</>
+              : <>{questions.length} questions • 70% accuracy needed to pass</>}
           </p>
         </div>
         <div className="flex items-center gap-3">

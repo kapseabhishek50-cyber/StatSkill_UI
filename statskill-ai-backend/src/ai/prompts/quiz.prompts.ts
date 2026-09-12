@@ -6,6 +6,7 @@ export interface QuizPromptContext {
   competencyName?: string;
   count: number;
   difficultyMix?: 'easy' | 'mixed' | 'hard';
+  language?: 'english' | 'hindi';
   facts: string[]; // extracted material chunks — the ONLY source of truth
 }
 
@@ -22,7 +23,7 @@ Rules:
 - Include a one-to-three sentence explanation citing the underlying fact.
 - Difficulty mix: ${difficulty} (easy/medium/hard).
 - No duplicate questions; options within a question must be unique.
-- Language: clear professional English.
+${ctx.language === 'hindi' ? '- Language: Hindi (Devanagari script) for questions, options and explanations; keep technical terms in English in parentheses.' : '- Language: clear professional English.'}
 
 Return STRICT JSON: {"questions":[{"question":"...","options":["","","",""],"correctAnswer":0,"explanation":"...","topic":"${ctx.topic}","difficulty":"easy|medium|hard"}]}
 

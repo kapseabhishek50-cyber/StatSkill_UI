@@ -26,4 +26,7 @@ export const createCourseSchema = z.object({
   rating: z.coerce.number().min(0).max(5).default(4),
 });
 
-export const updateCourseSchema = createCourseSchema.partial();
+export const updateCourseSchema = createCourseSchema.partial().extend({
+  // PATCH toggles active state (reactivation); create always starts active.
+  isActive: z.boolean().optional(),
+});

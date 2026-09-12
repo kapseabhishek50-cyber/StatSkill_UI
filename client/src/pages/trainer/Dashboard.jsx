@@ -1,20 +1,85 @@
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { BookOpen, Sparkles, CheckCircle2, TrendingUp, AlertTriangle, ArrowRight, FileText, Users } from 'lucide-react';
+import { FileText, Sparkles, CheckCircle2, Users, ArrowRight } from 'lucide-react';
 import { Card, Loading, ErrorNote, Empty } from '../../components/ui.jsx';
 import { useApi } from '../../hooks/useApi.js';
-import { endpoints } from '../../lib/index.js';
+import { api, endpoints } from '../../lib/index.js';
+import { materialToRow } from '../../lib/adapters.js';
 
 export default function TrainerDashboard() {
   const analyticsApi = useApi(endpoints.trainerAnalytics);
   const materialsApi = useApi(endpoints.trainerMaterials);
+  const quizzesApi = useApi(endpoints.trainerQuizzes);
+  const [weaknesses, setWeaknesses] = useState([]);
+  const [passRate, setPassRate] = useState(null);
+
+  const quizzes = useMemo(() => {
+    const full = quizzesApi.data?.items ?? quizzesApi.data?.quizzes ?? [];
+    if (full.length) return full;
+    return analyticsApi.data?.quizzes ?? [];
+  }, [quizzesApi.data, analyticsApi.data]);
+
+  // Per-quiz results feed the weakness radar (weakest topics first).
+  useEffect(() => {
+    let live = true;
+    const withAttempts = quizzes.filter((q) => Number(q.attemptCount ?? q.attempts ?? 0) > 0);
+    if (!withAttempts.length) {
+      setWeaknesses([]);
+      setPassRate(null);
+      return () => { live = false; };
+    }
+    Promise.all(
+      withAttempts.map((q) =>
+        api.get(endpoints.trainerQuizResults(String(q._id ?? q.id))).catch(() => null),
+      ),
+    ).then((results) => {
+      if (!live) return;
+      const topicAgg = new Map();
+      let passed = 0;
+      let total = 0;
+      for (const res of results) {
+        if (!res) continue;
+        for (const attempt of res.attempts ?? []) {
+          total += 1;
+          if (Number(attempt.score) >= 70) passed += 1;
+        }
+        for (const t of res.topicWeaknesses ?? []) {
+          const cur = topicAgg.get(t.topic) ?? { correct: 0, total: 0, attempts: 0 };
+          cur.correct += Math.round(((t.percent ?? 0) / 100) * (res.attempts?.length ?? 0));
+          cur.total += res.attempts?.length ?? 0;
+          cur.attempts += res.attempts?.length ?? 0;
+          topicAgg.set(t.topic, cur);
+        }
+      }
+      setPassRate(total ? Math.round((passed / total) * 100) : null);
+      setWeaknesses(
+        [...topicAgg.entries()]
+          .map(([topic, v]) => ({
+            competency: topic,
+            category: 'quiz topics',
+            avgScorePercent: v.total ? Math.round((v.correct / v.total) * 100) : 0,
+            attempts: v.attempts,
+          }))
+          .sort((a, b) => a.avgScorePercent - b.avgScorePercent)
+          .slice(0, 8),
+      );
+    });
+    return () => { live = false; };
+  }, [quizzes]);
 
   if (analyticsApi.loading || materialsApi.loading) {
-    return <Loading label="Loading NSSTA Trainer portal" />;
+    return <Loading label="Loading Trainer portal" />;
   }
 
-  const overview = analyticsApi.data?.overview ?? {};
-  const weaknesses = analyticsApi.data?.weaknesses ?? [];
-  const materials = materialsApi.data?.materials ?? [];
+  const materials = (materialsApi.data?.items ?? materialsApi.data?.materials ?? []).map(materialToRow);
+  const totalQuestions = quizzes.reduce((sum, q) => sum + Number(q.questions?.length ?? q.questionCount ?? 0), 0);
+  const totalEvaluations = quizzes.reduce((sum, q) => sum + Number(q.attemptCount ?? q.attempts ?? 0), 0);
+  const overview = {
+    publishedMaterials: materials.length,
+    totalQuestions,
+    totalEvaluations,
+    averagePassRate: passRate === null ? '—' : `${passRate}%`,
+  };
 
   return (
     <div className="space-y-6">
@@ -23,7 +88,7 @@ export default function TrainerDashboard() {
         <div>
           <h1 className="text-h1 font-bold text-ink">Trainer & Assessment Portal</h1>
           <p className="mt-0.5 text-[13px] text-ink-2">
-            National Statistical Systems Training Academy (NSSTA) — Curriculum authoring, AI-assisted question generation, and learner weakness evaluation.
+            Curriculum authoring, AI-assisted question generation, and learner weakness evaluation.
           </p>
         </div>
         <Link
@@ -44,7 +109,7 @@ export default function TrainerDashboard() {
             <span className="label">Training Documents</span>
             <FileText size={16} className="text-primary" />
           </div>
-          <p className="tnum mt-1.5 text-[22px] font-bold text-ink">{overview.publishedMaterials || materials.length || 6}</p>
+          <p className="tnum mt-1.5 text-[22px] font-bold text-ink">{overview.publishedMaterials}</p>
           <p className="mt-1 text-xs text-ink-2">PDF, DOCX & PPTX modules</p>
         </div>
 
@@ -53,8 +118,8 @@ export default function TrainerDashboard() {
             <span className="label">Question Bank Items</span>
             <Sparkles size={16} className="text-good" />
           </div>
-          <p className="tnum mt-1.5 text-[22px] font-bold text-ink">{overview.totalQuestions || 25}</p>
-          <p className="mt-1 text-xs text-ink-2">Mechanically validated MCQs</p>
+          <p className="tnum mt-1.5 text-[22px] font-bold text-ink">{overview.totalQuestions}</p>
+          <p className="mt-1 text-xs text-ink-2">Across {quizzes.length} quizzes</p>
         </div>
 
         <div className="metric-tile !p-4">
@@ -62,7 +127,7 @@ export default function TrainerDashboard() {
             <span className="label">Evaluations Conducted</span>
             <Users size={16} className="text-primary" />
           </div>
-          <p className="tnum mt-1.5 text-[22px] font-bold text-ink">{overview.totalEvaluations || 40}</p>
+          <p className="tnum mt-1.5 text-[22px] font-bold text-ink">{overview.totalEvaluations}</p>
           <p className="mt-1 text-xs text-ink-2">Official competency attempts</p>
         </div>
 
@@ -71,7 +136,7 @@ export default function TrainerDashboard() {
             <span className="label">Assessment Pass Rate</span>
             <CheckCircle2 size={16} className="text-primary" />
           </div>
-          <p className="tnum mt-1.5 text-[22px] font-bold text-ink">{overview.averagePassRate || '74%'}</p>
+          <p className="tnum mt-1.5 text-[22px] font-bold text-ink">{overview.averagePassRate}</p>
           <p className="mt-1 text-xs text-ink-2">Passing threshold: 70%</p>
         </div>
       </div>
@@ -81,40 +146,46 @@ export default function TrainerDashboard() {
         <div className="lg:col-span-7 space-y-4">
           <Card
             title="Batch Weakness Radar"
-            subtitle="Competency areas with lowest average passing scores requiring curriculum intervention."
+            subtitle="Quiz topics with the lowest average scores, requiring curriculum intervention."
           >
-            <div className="overflow-x-auto pt-2">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-hairline text-ink-2">
-                    <th className="py-2.5 pr-3 font-medium">Competency Area</th>
-                    <th className="py-2.5 pr-3 font-medium">Domain</th>
-                    <th className="py-2.5 pr-3 font-medium text-right">Avg Score</th>
-                    <th className="py-2.5 font-medium text-right">Attempts</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-hairline text-ink">
-                  {weaknesses.map((w, i) => (
-                    <tr key={i} className="hover:bg-plane transition-colors duration-200">
-                      <td className="py-2.5 pr-3 font-semibold">{w.competency}</td>
-                      <td className="py-2.5 pr-3 uppercase text-[10px] text-ink-muted">{w.category}</td>
-                      <td className="py-2.5 pr-3 text-right">
-                        <span
-                          className={`pill ${
-                            w.avgScorePercent < 60
-                              ? 'pill-danger'
-                              : 'pill-warning'
-                          }`}
-                        >
-                          {w.avgScorePercent}%
-                        </span>
-                      </td>
-                      <td className="py-2.5 text-right text-ink-2">{w.attempts || 8}</td>
+            {weaknesses.length === 0 ? (
+              <div className="pt-2">
+                <Empty title="No attempts yet" description="Weaknesses appear here once learners attempt your quizzes." />
+              </div>
+            ) : (
+              <div className="overflow-x-auto pt-2">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-hairline text-ink-2">
+                      <th className="py-2.5 pr-3 font-medium">Competency Area</th>
+                      <th className="py-2.5 pr-3 font-medium">Domain</th>
+                      <th className="py-2.5 pr-3 font-medium text-right">Avg Score</th>
+                      <th className="py-2.5 font-medium text-right">Attempts</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-hairline text-ink">
+                    {weaknesses.map((w, i) => (
+                      <tr key={i} className="hover:bg-plane transition-colors duration-200">
+                        <td className="py-2.5 pr-3 font-semibold">{w.competency}</td>
+                        <td className="py-2.5 pr-3 uppercase text-[10px] text-ink-muted">{w.category}</td>
+                        <td className="py-2.5 pr-3 text-right">
+                          <span
+                            className={`pill ${
+                              w.avgScorePercent < 60
+                                ? 'pill-danger'
+                                : 'pill-warning'
+                            }`}
+                          >
+                            {w.avgScorePercent}%
+                          </span>
+                        </td>
+                        <td className="py-2.5 text-right text-ink-2">{w.attempts || 0}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </Card>
         </div>
 
@@ -139,7 +210,9 @@ export default function TrainerDashboard() {
                         <p className="text-[11px] text-ink-muted uppercase">{m.fileType} · {m.textLength?.toLocaleString()} chars</p>
                       </div>
                     </div>
-                    <span className="tnum text-[11px] font-bold text-primary shrink-0">L{m.targetLevel}</span>
+                    <span className={`tnum text-[11px] font-bold shrink-0 ${m.status === 'READY' ? 'text-good' : 'text-warning'}`}>
+                      {m.status || '—'}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -159,4 +232,3 @@ export default function TrainerDashboard() {
     </div>
   );
 }
-

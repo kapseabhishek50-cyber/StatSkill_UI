@@ -6,6 +6,23 @@ export const startAssessmentSchema = z.object({
   type: z.enum(['ROLE_BASED', 'FULL', 'COMPETENCY', 'DIAGNOSTIC']).optional(),
 });
 
+/**
+ * Self-assessment: the officer rates themselves 0-5 per required competency.
+ * A self-rating is evidence, not a recorded level — stored with source
+ * SELF_REPORTED and low confidence so a later quiz result overrides it.
+ */
+export const selfAssessmentSchema = z.object({
+  responses: z
+    .array(
+      z.object({
+        competency: z.string().regex(/^[0-9a-fA-F]{24}$/),
+        selfLevel: z.coerce.number().int().min(0).max(5),
+      })
+    )
+    .min(1)
+    .max(60),
+});
+
 export const submitAssessmentSchema = z.object({
   answers: z
     .array(

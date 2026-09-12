@@ -116,6 +116,7 @@ export const aiService = {
     count: number;
     facts: string[];
     difficultyMix?: 'easy' | 'mixed' | 'hard';
+    language?: 'english' | 'hindi';
   }): Promise<z.infer<typeof mcqQuestionSchema>[]> {
     const prompt = promptService.quiz({
       topic: input.topic,
@@ -124,6 +125,7 @@ export const aiService = {
       count: input.count,
       facts: input.facts,
       difficultyMix: input.difficultyMix,
+      language: input.language,
     });
     const raw = await withFallback(
       () => getAIProvider().generateJSON<unknown>(prompt, 'quiz_questions'),

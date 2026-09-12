@@ -15,3 +15,7 @@ export const sendMessageSchema = z.object({
 export const reportMessageSchema = z.object({
   reason: z.string().min(3).max(500),
 });
+
+export const askAiSchema = z.object({
+  prompt: z.string().min(3).max(500),
+});

@@ -4,76 +4,50 @@ import {
   Award,
   Lock,
   CheckCircle2,
-  Star,
   Trophy,
-  Target
 } from 'lucide-react';
-import { Card } from '../../components/ui.jsx';
+import { Card, Empty, ErrorNote, Loading } from '../../components/ui.jsx';
+import { useApi } from '../../hooks/useApi.js';
 import { useAuth } from '../../context/AuthContext.jsx';
+import { endpoints, formatDate } from '../../lib/index.js';
+import { achievementsToBadges, activityToHeatmap } from '../../lib/adapters.js';
 
 export default function Streak() {
   const { user } = useAuth();
+  const streakApi = useApi(endpoints.gamificationStreak);
+  const badgesApi = useApi(endpoints.gamificationBadges);
+  const allBadgesApi = useApi(endpoints.achievementsAll);
+  const activityApi = useApi(endpoints.activity);
 
-  const currentStreak = user?.currentStreak ?? 7;
-  const longestStreak = 21;
-  const xp = user?.xp ?? 2480;
-  const totalDays = 87;
+  if (streakApi.loading) return <Loading label="Loading your streak & badges" />;
 
-  // 60-day activity simulation
-  const days = Array.from({ length: 60 }).map((_, i) => {
-    // Recent 7 days active, scattered activity before
-    const isActive = i > 52 || (i % 3 === 0) || (i % 7 === 2);
-    return { day: i + 1, active: isActive };
-  });
+  const streak = streakApi.data?.streak ?? {};
+  const currentStreak = streak.currentStreak ?? user?.currentStreak ?? 0;
+  const longestStreak = streak.longestStreak ?? 0;
+  const totalDays = streak.totalLearningDays ?? 0;
+  const xp = user?.xp ?? 0;
 
-  const badges = [
-    {
-      id: 'b1',
-      title: 'First Assessment',
-      desc: 'Completed initial competency evaluation',
-      unlocked: true,
-      icon: Target,
-    },
-    {
-      id: 'b2',
-      title: '7-Day Streak',
-      desc: 'Maintained 7 consecutive days of active learning',
-      unlocked: true,
-      icon: Flame,
-    },
-    {
-      id: 'b3',
-      title: 'Quiz Master',
-      desc: 'Scored 100% on 3 consecutive competency quizzes',
-      unlocked: true,
-      icon: Award,
-    },
-    {
-      id: 'b4',
-      title: 'Course Explorer',
-      desc: 'Enrolled in 5+ official NSSTA training modules',
-      unlocked: true,
-      icon: Star,
-    },
-    {
-      id: 'b5',
-      title: 'Skill Improver',
-      desc: 'Upgraded 3 competencies to Level 3 or higher',
-      unlocked: false,
-      req: 'Upgrade 1 more competency',
-      icon: Zap,
-    },
-    {
-      id: 'b6',
-      title: '30-Day Champion',
-      desc: 'Complete a full month of continuous capacity building',
-      unlocked: false,
-      req: '23 days remaining',
-      icon: Trophy,
-    },
-  ];
+  const cells = activityToHeatmap(activityApi.data?.activities ?? [], 60);
+  const activeCells = cells.filter((c) => c.active);
+  const consistency = cells.length ? Math.round((activeCells.length / cells.length) * 100) : 0;
 
+  const badges = achievementsToBadges(
+    allBadgesApi.data?.achievements ?? [],
+    badgesApi.data?.unlocked ?? [],
+  );
+
+  // This week's day indicators, Monday-first.
   const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const today = new Date();
+  const mondayOffset = (today.getDay() + 6) % 7;
+  const activeDays = new Set(cells.filter((c) => c.active).map((c) => c.day));
+  const weekCells = weekDays.map((label, idx) => {
+    const date = new Date(today);
+    date.setDate(date.getDate() - mondayOffset + idx);
+    const key = date.toISOString().slice(0, 10);
+    const isFuture = idx > mondayOffset;
+    return { label, done: !isFuture && activeDays.has(key), isFuture };
+  });
 
   return (
     <div className="space-y-5 max-w-5xl">
@@ -87,6 +61,8 @@ export default function Streak() {
         </p>
       </div>
 
+      <ErrorNote error={streakApi.error ?? badgesApi.error} onRetry={streakApi.refetch} />
+
       {/* ── Main Streak Banner ─────────────────────────────────── */}
       <div className="card-ai p-5 flex flex-col md:flex-row items-center justify-between gap-5">
         <div className="flex items-center gap-4">
@@ -97,7 +73,7 @@ export default function Streak() {
           <div className="space-y-1 text-center md:text-left">
             <div className="flex items-center gap-2 justify-center md:justify-start">
               <h2 className="tnum text-[26px] font-bold text-ink">{currentStreak} Days</h2>
-              <span className="pill pill-warning text-[11px]">Active Streak</span>
+              <span className="pill pill-warning text-[11px]">{currentStreak > 0 ? 'Active Streak' : 'Start Today'}</span>
             </div>
             <p className="text-[13px] font-medium text-ink-2">
               Complete a quick quiz or module today to keep the streak going.
@@ -107,17 +83,17 @@ export default function Streak() {
 
         {/* Weekly Day Indicators */}
         <div className="flex items-center gap-1.5 bg-surface p-2.5 rounded-card border border-hairline">
-          {weekDays.map((d, idx) => (
-            <div key={d} className="flex flex-col items-center gap-1.5">
-              <span className="text-[10px] font-semibold text-ink-muted">{d}</span>
+          {weekCells.map((d) => (
+            <div key={d.label} className="flex flex-col items-center gap-1.5">
+              <span className="text-[10px] font-semibold text-ink-muted">{d.label}</span>
               <div
                 className={`grid h-8 w-8 place-items-center rounded-button text-xs font-bold transition-all duration-200 ${
-                  idx < 5
+                  d.done
                     ? 'bg-primary text-white'
                     : 'bg-plane text-ink-muted border border-hairline'
                 }`}
               >
-                {idx < 5 ? <CheckCircle2 size={15} /> : '•'}
+                {d.done ? <CheckCircle2 size={15} /> : '•'}
               </div>
             </div>
           ))}
@@ -129,22 +105,24 @@ export default function Streak() {
         <div className="metric-tile">
           <span className="label">Current Streak</span>
           <p className="tnum text-[22px] font-bold text-ink mt-1.5">{currentStreak} Days</p>
-          <p className="text-xs text-streak font-medium mt-1">Personal Best: 21 Days</p>
+          <p className="text-xs text-streak font-medium mt-1">Personal Best: {longestStreak} Days</p>
         </div>
         <div className="metric-tile">
           <span className="label">Longest Streak</span>
           <p className="tnum text-[22px] font-bold text-ink mt-1.5">{longestStreak} Days</p>
-          <p className="text-xs text-ink-muted mt-1">Set in Aug 2026</p>
+          <p className="text-xs text-ink-muted mt-1">
+            {streak.lastActivityDate ? `Last active ${formatDate(streak.lastActivityDate)}` : 'No activity yet'}
+          </p>
         </div>
         <div className="metric-tile">
           <span className="label">Total XP</span>
           <p className="tnum text-[22px] font-bold text-ink mt-1.5">{xp}</p>
-          <p className="text-xs text-primary font-medium mt-1">Rank: Top 5% in Cadre</p>
+          <p className="text-xs text-primary font-medium mt-1">Level {user?.level ?? 1}</p>
         </div>
         <div className="metric-tile">
           <span className="label">Active Days</span>
           <p className="tnum text-[22px] font-bold text-ink mt-1.5">{totalDays}</p>
-          <p className="text-xs text-good font-medium mt-1">82% Consistency</p>
+          <p className="text-xs text-good font-medium mt-1">{consistency}% last 60 days</p>
         </div>
       </div>
 
@@ -164,29 +142,36 @@ export default function Streak() {
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-1.5 pt-1">
-          {days.map((d) => (
-            <div
-              key={d.day}
-              title={`Day ${d.day}: ${d.active ? 'Activity recorded' : 'No activity'}`}
-              className={`h-5 w-5 rounded transition-all duration-200 cursor-pointer ${
-                d.active
-                  ? 'bg-primary'
-                  : 'bg-surface-2 border border-hairline'
-              }`}
-            />
-          ))}
-        </div>
+        {activityApi.loading ? (
+          <Loading label="Loading activity" />
+        ) : (
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            {cells.map((d) => (
+              <div
+                key={d.day}
+                title={`${d.day}: ${d.active ? `${d.count} learning event${d.count === 1 ? '' : 's'}` : 'No activity'}`}
+                className={`h-5 w-5 rounded transition-all duration-200 cursor-pointer ${
+                  d.active
+                    ? 'bg-primary'
+                    : 'bg-surface-2 border border-hairline'
+                }`}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ── Badges & Achievements Grid ──────────────────────────── */}
       <div className="space-y-3.5">
         <h3 className="text-h2 font-bold text-ink">Earned Badges & Milestones</h3>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {badges.map((b) => {
-            const Icon = b.icon;
-            return (
+        {badges.length === 0 ? (
+          <Card>
+            <Empty title="No badges yet" description="Badges unlock as you assess, learn, and keep streaks." />
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {badges.map((b) => (
               <div
                 key={b.id}
                 className={`card card-hover !p-5 flex items-start gap-3.5 transition-all duration-200 ${
@@ -196,13 +181,13 @@ export default function Streak() {
                 }`}
               >
                 <div
-                  className={`grid h-11 w-11 shrink-0 place-items-center rounded-button ${
+                  className={`grid h-11 w-11 shrink-0 place-items-center rounded-button text-xl ${
                     b.unlocked
-                      ? 'bg-primary text-white'
-                      : 'bg-surface-2 text-ink-muted border border-hairline'
+                      ? 'bg-primary-light border border-primary-border'
+                      : 'bg-surface-2 text-ink-muted border border-hairline grayscale opacity-60'
                   }`}
                 >
-                  {b.unlocked ? <Icon size={20} strokeWidth={1.8} /> : <Lock size={18} />}
+                  {b.unlocked ? <span aria-hidden="true">{b.icon}</span> : <Lock size={18} />}
                 </div>
 
                 <div className="space-y-1 min-w-0">
@@ -215,17 +200,30 @@ export default function Streak() {
                     )}
                   </div>
                   <p className="text-xs text-ink-2 leading-relaxed">{b.desc}</p>
+                  {b.unlocked && b.xpReward > 0 && (
+                    <p className="text-[11px] font-semibold text-primary pt-0.5 flex items-center gap-1">
+                      <Zap size={11} /> +{b.xpReward} XP
+                    </p>
+                  )}
                   {!b.unlocked && b.req && (
                     <p className="text-[11px] font-semibold text-primary pt-0.5">
-                      Requirement: {b.req}
+                      {b.req}
                     </p>
                   )}
                 </div>
               </div>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
+
+      {badges.some((b) => b.unlocked) && (
+        <div className="flex items-center gap-2 text-xs text-ink-muted">
+          <Trophy size={13} className="text-primary" />
+          <Award size={13} className="text-good" />
+          {badges.filter((b) => b.unlocked).length} of {badges.length} badges unlocked — attempt quizzes and courses to earn more.
+        </div>
+      )}
     </div>
   );
 }

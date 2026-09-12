@@ -1,32 +1,49 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   BookOpen,
   ExternalLink,
   GraduationCap,
   Sparkles,
-  CheckCircle2
+  CheckCircle2,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import CompetencyMeter from '../../components/CompetencyMeter.jsx';
 import { Badge, Card, Empty, ErrorNote, Loading } from '../../components/ui.jsx';
 import { useApi } from '../../hooks/useApi.js';
 import { api, endpoints } from '../../lib/index.js';
+import { narrativeFromGaps, recommendationsToPath } from '../../lib/adapters.js';
 
 export default function LearningPath() {
-  const path = useApi(endpoints.recommendations);
+  const recs = useApi(endpoints.recommendations);
+  const gapsApi = useApi(endpoints.skillGaps);
   const [recomputing, setRecomputing] = useState(false);
 
-  if (path.loading) return <Loading label="Calculating optimal learning roadmap" />;
-  if (path.error) return <ErrorNote error={path.error} onRetry={path.refetch} />;
+  const gapsByCode = useMemo(() => {
+    const map = new Map();
+    for (const gap of gapsApi.data?.skillGaps ?? []) {
+      map.set(String(gap.competencyCode ?? gap.competencyId), gap);
+    }
+    return map;
+  }, [gapsApi.data]);
 
-  const data = path.data;
-  const items = data?.path ?? [];
+  const items = useMemo(
+    () => recommendationsToPath(recs.data?.recommendations ?? [], gapsByCode),
+    [recs.data, gapsByCode],
+  );
+  const narrative = useMemo(
+    () => narrativeFromGaps(gapsApi.data?.skillGaps ?? []),
+    [gapsApi.data],
+  );
+
+  if (recs.loading) return <Loading label="Calculating optimal learning roadmap" />;
+  if (recs.error) return <ErrorNote error={recs.error} onRetry={recs.refetch} />;
 
   async function handleRecompute() {
     setRecomputing(true);
     try {
       await api.post(endpoints.recomputeRecommendations, {});
-      await path.refetch();
+      await recs.refetch();
+      await gapsApi.refetch();
     } catch (err) {
       console.error('Failed to recompute path:', err);
     } finally {
@@ -43,7 +60,7 @@ export default function LearningPath() {
             Personalized Learning Path
           </h1>
           <p className="mt-0.5 text-[13px] text-ink-2">
-            AI-sequenced curriculum based on your largest priority skill gaps.
+            Sequenced curriculum based on your largest priority skill gaps.
           </p>
         </div>
 
@@ -53,12 +70,12 @@ export default function LearningPath() {
           className="btn btn-primary !text-xs flex items-center gap-2 self-start sm:self-auto"
         >
           <Sparkles size={14} />
-          {recomputing ? 'Recalculating...' : 'Recompute with AI'}
+          {recomputing ? 'Recalculating...' : 'Recompute Path'}
         </button>
       </div>
 
-      {/* ── AI Narrative Explanation Card ──────────────────────── */}
-      {data?.narrative && (
+      {/* ── Narrative Explanation Card ──────────────────────── */}
+      {narrative && (
         <div className="card-ai p-5 space-y-2.5">
           <div className="flex items-center gap-2">
             <span className="icon-chip !w-7 !h-7">
@@ -69,11 +86,11 @@ export default function LearningPath() {
             </h2>
           </div>
           <p className="text-[13px] font-medium text-ink leading-relaxed">
-            {data.narrative.summary}
+            {narrative.summary}
           </p>
-          {data.narrative.factors?.length > 0 && (
+          {narrative.factors?.length > 0 && (
             <div className="pt-1.5 flex flex-wrap gap-2">
-              {data.narrative.factors.map((f, i) => (
+              {narrative.factors.map((f, i) => (
                 <span key={i} className="pill pill-neutral text-[11px]">
                   <CheckCircle2 size={11} className="text-good" /> {f}
                 </span>
@@ -183,7 +200,7 @@ export default function LearningPath() {
             <Card>
               <Empty
                 title="No Learning Path Found"
-                description="Complete your initial assessment so AI can chart your personal upskilling roadmap."
+                description="Complete your initial assessment so your personal upskilling roadmap can be charted."
               />
             </Card>
           )}

@@ -32,6 +32,8 @@ export const generateQuizSchema = z
     topic: z.string().min(2).max(200).optional(),
     competencyCode: z.string().max(50).optional(),
     count: z.coerce.number().int().min(3).max(20).optional(),
+    difficulty: z.enum(['easy', 'medium', 'hard']).optional(),
+    language: z.enum(['english', 'hindi']).optional(),
   })
   .refine((d) => d.materialId || d.topic || d.competencyCode, {
     message: 'Provide materialId, or topic/competencyCode',

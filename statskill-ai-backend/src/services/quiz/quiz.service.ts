@@ -45,10 +45,30 @@ export const quizService = {
     const p = parsePagination(req.query);
     const filter: Record<string, unknown> = { status: 'PUBLISHED' };
     if (req.query.competencyCode) filter['questions.topic'] = new RegExp(String(req.query.competencyCode), 'i');
-    const [items, total] = await Promise.all([
-      Quiz.find(filter).sort(mongoSort(p)).skip(p.skip).limit(p.limit).select('-questions.correctAnswer -questions.explanation'),
+    const [docs, total] = await Promise.all([
+      Quiz.find(filter).sort(mongoSort(p)).skip(p.skip).limit(p.limit),
       Quiz.countDocuments(filter),
     ]);
+    // Sanitized in JS (not via .select projection) so answer keys can never
+    // leak regardless of which Mongo adapter serves the query.
+    const items = docs.map((q) => ({
+      id: String(q._id),
+      _id: q._id,
+      title: q.title,
+      description: q.description,
+      durationMinutes: q.durationMinutes,
+      publishedAt: q.publishedAt,
+      attemptCount: q.attemptCount,
+      questionCount: q.questions.length,
+      topics: [...new Set(q.questions.map((qt) => qt.topic).filter(Boolean))],
+      competencyIds: [...new Set(q.questions.map((qt) => (qt.competencyId ? String(qt.competencyId) : null)).filter(Boolean))],
+      questions: q.questions.map((qt) => ({
+        questionId: qt.questionId,
+        topic: qt.topic,
+        difficulty: qt.difficulty,
+        competencyId: qt.competencyId ? String(qt.competencyId) : undefined,
+      })),
+    }));
     return { items, pagination: buildPagination(total, p) };
   },
 
@@ -59,7 +79,7 @@ export const quizService = {
   },
 
   /** Submit + full server-side scoring → competency updates → recs refresh (prompt §26-27). */
-  async submit(quizId: string, userId: string, input: QuizSubmitInput): Promise<{ attempt: Record<string, unknown>; competencyUpdates: { code: string; name: string; from: number; to: number }[] }> {
+  async submit(quizId: string, userId: string, input: QuizSubmitInput): Promise<{ attempt: Record<string, unknown>; competencyUpdates: { code: string; name: string; from: number; to: number }[]; review: Record<string, unknown>[]; passed: boolean; scoreRatio: number }> {
     const quiz = await this.getById(quizId);
     if (quiz.status !== 'PUBLISHED') throw forbidden('Quiz is not published');
     if (!Array.isArray(input.answers) || input.answers.length === 0) throw badRequest('Answers are required');
@@ -141,7 +161,33 @@ export const quizService = {
       data: { quizId: String(quiz._id), score: result.score },
     });
 
-    return { attempt: { ...attempt.toObject(), xpAwarded: activity.xpAwarded }, competencyUpdates };
+    // 5. Post-submit review: the learner may now see correct answers + explanations.
+    const byQuestionId = new Map(input.answers.map((a) => [a.questionId, a.selectedIndex]));
+    const review = quiz.questions.map((q) => {
+      const chosen = byQuestionId.get(q.questionId);
+      return {
+        questionId: q.questionId,
+        stem: q.question,
+        options: q.options,
+        topic: q.topic,
+        difficulty: q.difficulty,
+        chosen: chosen ?? null,
+        chosenText: typeof chosen === 'number' && chosen >= 0 ? q.options[chosen] ?? null : null,
+        correct: q.correctAnswer,
+        correctText: q.options[q.correctAnswer] ?? null,
+        isCorrect: chosen === q.correctAnswer,
+        explanation: q.explanation ?? null,
+      };
+    });
+
+    const passed = result.score >= 70;
+    return {
+      attempt: { ...attempt.toObject(), xpAwarded: activity.xpAwarded },
+      competencyUpdates,
+      review,
+      passed,
+      scoreRatio: result.score / 100,
+    };
   },
 
   // ---------- trainer flows ----------
@@ -234,6 +280,32 @@ export const quizService = {
     const quiz = await this.getById(quizId);
     if (String(quiz.createdBy) !== userId) throw forbidden('Not your quiz');
     return { quiz, issues: validateQuestions(quiz.questions) };
+  },
+
+  /** Admin review: any quiz, regardless of owner. */
+  async reviewAny(quizId: string) {
+    const quiz = await this.getById(quizId);
+    return { quiz, issues: validateQuestions(quiz.questions) };
+  },
+
+  /** Admin question bank: every quiz in any status, with owner + question counts. */
+  async listForAdmin(req: Request) {
+    const p = parsePagination(req.query);
+    const filter: Record<string, unknown> = {};
+    if (req.query.status) filter.status = String(req.query.status).toUpperCase();
+    if (req.query.q) filter.title = new RegExp(String(req.query.q), 'i');
+    const [items, total] = await Promise.all([
+      Quiz.find(filter).sort(mongoSort(p)).skip(p.skip).limit(p.limit).populate('createdBy', 'name email'),
+      Quiz.countDocuments(filter),
+    ]);
+    return {
+      quizzes: items.map((q) => ({
+        ...q.toObject(),
+        questionCount: q.questions.length,
+        topics: [...new Set(q.questions.map((x) => x.topic))],
+      })),
+      pagination: buildPagination(total, p),
+    };
   },
 
   async resultsForQuiz(quizId: string, trainerId: string) {

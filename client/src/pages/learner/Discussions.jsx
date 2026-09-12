@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   MessageSquare,
   Users,
@@ -16,25 +16,30 @@ import {
   X,
 } from 'lucide-react';
 import { Card, Badge, Button, Loading, ErrorNote, Empty } from '../../components/ui.jsx';
-import { useApi, useMutation } from '../../hooks/useApi.js';
+import { useApi } from '../../hooks/useApi.js';
 import { api, endpoints, formatDate } from '../../lib/index.js';
+import { communityToGroup, normalizeMessage } from '../../lib/adapters.js';
 
-const GROUP_ICONS = {
-  Brain: Brain,
-  Terminal: Terminal,
-  BarChart2: BarChart2,
-  FileText: FileText,
-  Map: Map,
-  Shield: Shield,
-};
+const GROUP_ICONS = [Brain, Terminal, BarChart2, FileText, Map, Shield];
+
+function iconFor(group) {
+  const name = group.title ?? '';
+  let hash = 0;
+  for (let i = 0; i < name.length; i += 1) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  return GROUP_ICONS[hash % GROUP_ICONS.length];
+}
 
 export default function Discussions() {
   const groupsApi = useApi(endpoints.discussionGroups);
-  const groups = groupsApi.data?.groups ?? [];
+  const groups = useMemo(
+    () => (groupsApi.data?.items ?? []).map(communityToGroup),
+    [groupsApi.data],
+  );
 
   const [activeGroup, setActiveGroup] = useState(null);
   const [messages, setMessages] = useState([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [messagesError, setMessagesError] = useState(null);
   const [newText, setNewText] = useState('');
   const [aiPrompt, setAiPrompt] = useState('');
   const [showAiModal, setShowAiModal] = useState(false);
@@ -55,11 +60,12 @@ export default function Discussions() {
 
     async function load() {
       setLoadingMessages(true);
+      setMessagesError(null);
       try {
-        const res = await api.get(`/discussions/groups/${activeGroup._id}/messages`);
-        if (!cancelled) setMessages(res.messages || []);
+        const res = await api.get(endpoints.communityMessages(activeGroup._id));
+        if (!cancelled) setMessages((res.messages || []).map(normalizeMessage));
       } catch (err) {
-        console.error('Failed to load group messages', err);
+        if (!cancelled) setMessagesError(err);
       } finally {
         if (!cancelled) setLoadingMessages(false);
       }
@@ -76,10 +82,12 @@ export default function Discussions() {
 
   const postMessage = async (content, replyToId) => {
     if (!content.trim() || !activeGroup) return;
-    const payload = { content: content.trim(), replyTo: replyToId };
     try {
-      const res = await api.post(`/discussions/groups/${activeGroup._id}/messages`, payload);
-      if (res.message) setMessages((prev) => [...prev, res.message]);
+      const res = await api.post(endpoints.communitySend(activeGroup._id), {
+        content: content.trim(),
+        ...(replyToId ? { replyToId } : {}),
+      });
+      if (res.message) setMessages((prev) => [...prev, normalizeMessage(res.message)]);
     } catch (err) {
       console.error('Failed to post message', err);
     }
@@ -87,7 +95,7 @@ export default function Discussions() {
 
   const handleSendMessage = (e) => {
     e.preventDefault();
-    postMessage(newText, null);
+    postMessage(newText, replyTo?._id ?? null);
     setNewText('');
     setReplyTo(null);
   };
@@ -96,9 +104,9 @@ export default function Discussions() {
     if (!aiPrompt.trim() || !activeGroup || aiLoading) return;
     setAiLoading(true);
     try {
-      const res = await api.post(`/discussions/groups/${activeGroup._id}/ask-ai`, { prompt: aiPrompt.trim() });
+      const res = await api.post(endpoints.communityAskAi(activeGroup._id), { prompt: aiPrompt.trim() });
       if (res.message) {
-        setMessages((prev) => [...prev, res.message]);
+        setMessages((prev) => [...prev, normalizeMessage(res.message)]);
         setAiPrompt('');
         setShowAiModal(false);
       }
@@ -120,7 +128,7 @@ export default function Discussions() {
             Statistical Learning Discussions
           </h1>
           <p className="mt-0.5 text-[13px] text-ink-2">
-            Collaborative peer capacity building across official statistical domains. Meaningful contributions award <span className="font-semibold text-primary">+20 XP</span> towards your streak.
+            Collaborative peer capacity building across official statistical domains. Meaningful contributions award <span className="font-semibold text-primary">XP</span> towards your streak.
           </p>
         </div>
         <Button variant="primary" size="sm" onClick={() => setShowAiModal(true)}>
@@ -129,7 +137,7 @@ export default function Discussions() {
         </Button>
       </div>
 
-      <ErrorNote error={groupsApi.error} />
+      <ErrorNote error={groupsApi.error ?? messagesError} />
 
       <div className="grid gap-4 lg:grid-cols-12">
         {/* ── Groups Sidebar ──────────────────────────── */}
@@ -139,7 +147,7 @@ export default function Discussions() {
           </h3>
           <div className="space-y-1.5">
             {groups.map((group) => {
-              const Icon = GROUP_ICONS[group.icon] || MessageSquare;
+              const Icon = iconFor(group);
               const isActive = activeGroup?._id === group._id;
               return (
                 <button
@@ -163,7 +171,7 @@ export default function Discussions() {
                     <div className="flex items-center justify-between gap-1">
                       <h4 className="text-[13px] font-semibold text-ink truncate">{group.title}</h4>
                       <span className="flex items-center gap-1 text-[11px] text-ink-muted shrink-0">
-                        <Users size={12} /> {group.memberCount || 30}
+                        <Users size={12} /> {group.memberCount ?? 0}
                       </span>
                     </div>
                     <p className="text-xs text-ink-2 truncate mt-0.5">{group.topic}</p>
@@ -218,7 +226,7 @@ export default function Discussions() {
                             : 'bg-surface-2 text-ink'
                         }`}
                       >
-                        {m.isAiGenerated ? <Bot size={14} /> : m.authorName[0]}
+                        {m.isAiGenerated ? <Bot size={14} /> : (m.authorName?.[0] ?? '?')}
                       </div>
                       <span className="text-xs font-semibold text-ink">{m.authorName}</span>
                       {m.isAiGenerated ? (
@@ -284,7 +292,7 @@ export default function Discussions() {
               type="text"
               value={newText}
               onChange={(e) => setNewText(e.target.value)}
-              placeholder={`Contribute to ${activeGroup?.title || 'discussion'}... (+20 XP)`}
+              placeholder={`Contribute to ${activeGroup?.title || 'discussion'}...`}
               className="field !text-xs flex-1"
             />
             <Button type="submit" variant="primary" size="sm" disabled={!newText.trim()}>
@@ -314,13 +322,13 @@ export default function Discussions() {
               </button>
             </div>
             <p className="text-xs text-ink-2">
-              StatSkill AI will analyze official MoSPI guidelines and post a contextually validated response.
+              StatSkill AI will post a grounded response into this thread.
             </p>
             <textarea
               rows={3}
               value={aiPrompt}
               onChange={(e) => setAiPrompt(e.target.value)}
-              placeholder="e.g. Explain how to handle outlier weights in CPI revisions under NQAF guidelines..."
+              placeholder="e.g. Explain how to handle outlier weights in CPI revisions..."
               className="field !text-xs w-full"
               disabled={aiLoading}
             />

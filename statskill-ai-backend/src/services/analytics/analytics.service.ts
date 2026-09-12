@@ -10,7 +10,8 @@ import { skillGapService } from '../skillGap/skillGap.service';
 /** Admin analytics (prompt §33) — deterministic aggregations. */
 export const analyticsService = {
   async adminDashboard() {
-    const [totalUsers, activeUsers, learners, trainers, courses, enrollments, completions, attempts, activities, avgComp, avgQuiz, topGaps, deptHeatmap, popularity, activityByDay] =
+    const { adminInsightsService } = await import('./adminInsights.service');
+    const [totalUsers, activeUsers, learners, trainers, courses, enrollments, completions, attempts, activities, avgComp, avgQuiz, topGaps, deptHeatmap, popularity, activityByDay, departments, openGapUsers, learnerIds] =
       await Promise.all([
         User.countDocuments({}),
         User.countDocuments({ isActive: true }),
@@ -27,7 +28,15 @@ export const analyticsService = {
         this.departmentCompetencyHeatmap(),
         this.coursePopularity(8),
         this.learningActivitySeries(14),
+        User.distinct('department', { role: 'LEARNER' }),
+        SkillGap.distinct('userId', { gap: { $gt: 0 } }),
+        User.find({ role: 'LEARNER', isActive: true }).select('_id').then((docs) => docs.map((d) => String(d._id))),
       ]);
+    const enriched = await adminInsightsService.enrichUsers(learnerIds);
+    const readinessValues = [...enriched.values()].map((e) => e.readiness);
+    const meanReadiness = readinessValues.length
+      ? readinessValues.reduce((a, b) => a + b, 0) / readinessValues.length
+      : 0;
 
     return {
       users: { total: totalUsers, active: activeUsers, learners, trainers },
@@ -41,6 +50,15 @@ export const analyticsService = {
       departmentCompetency: deptHeatmap,
       coursePopularity: popularity,
       learningActivityByDay: activityByDay,
+      // Flat overview tiles for the workforce analytics header.
+      overview: {
+        officers: learners,
+        divisions: departments.filter(Boolean).length,
+        meanReadiness: Math.round(meanReadiness * 1000) / 1000,
+        officersWithGaps: openGapUsers.length,
+        quizzesTaken: attempts,
+        coursesEnrolled: enrollments,
+      },
     };
   },
 
