@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Environment & secrets — never commit
+.env
+.env.local
+.env.*.local
+*.pem
+*-firebase-adminsdk-*.json
+firebase-credentials*.json
+
+# Dev/test embedded databases
+.dev-data/
+
+# Uploads (user content)
+uploads/
+
+# Logs
+logs/
+*.log
+
+# Coverage
+coverage/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

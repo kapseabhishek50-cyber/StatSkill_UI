@@ -1,0 +1,293 @@
+{
+  "info": {
+    "name": "StatSkill AI — Backend API",
+    "description": "Complete REST API collection for the StatSkill AI backend (competency framework, hybrid recommendations, assessments, courses, quizzes, gamification, communities, admin).\n\n**Getting started**\n1. Set `baseUrl` (default http://localhost:5000).\n2. POST /api/auth/login → copy `data.accessToken` into `accessToken` (learner), `trainerToken`, or `adminToken`.\n3. Seeded demo logins: `rahul.sharma@mospi.gov.in` / `priya.nair@nssta.gov.in` (trainer) / `admin@mospi.gov.in` — password `Demo@123` (dev seed only).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000" },
+    { "key": "accessToken", "value": "" },
+    { "key": "trainerToken", "value": "" },
+    { "key": "adminToken", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health & Docs",
+      "item": [
+        { "name": "Health", "request": { "method": "GET", "url": "{{baseUrl}}/api/health" } },
+        { "name": "Health — Detailed", "request": { "method": "GET", "url": "{{baseUrl}}/api/health/detailed" } },
+        { "name": "OpenAPI JSON", "request": { "method": "GET", "url": "{{baseUrl}}/api/docs.json" } },
+        { "name": "Swagger UI", "request": { "method": "GET", "url": "{{baseUrl}}/api/docs" } }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"New Officer\",\n  \"email\": \"officer@example.gov.in\",\n  \"password\": \"StrongPass@123\",\n  \"role\": \"LEARNER\",\n  \"designation\": \"Statistical Officer\",\n  \"department\": \"National Statistical Office\"\n}" },
+            "url": "{{baseUrl}}/api/auth/register"
+          }
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"rahul.sharma@mospi.gov.in\",\n  \"password\": \"Demo@123\"\n}" },
+            "url": "{{baseUrl}}/api/auth/login"
+          }
+        },
+        {
+          "name": "Refresh token",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"<refreshToken from login>\"\n}" },
+            "url": "{{baseUrl}}/api/auth/refresh"
+          }
+        },
+        { "name": "Me", "request": { "method": "GET", "url": "{{baseUrl}}/api/auth/me", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } },
+        { "name": "Logout", "request": { "method": "POST", "url": "{{baseUrl}}/api/auth/logout", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } },
+        {
+          "name": "Change password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"currentPassword\": \"Demo@123\",\n  \"newPassword\": \"NewerPass@123\"\n}" },
+            "url": "{{baseUrl}}/api/auth/password"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dashboard (one-shot)",
+      "item": [
+        { "name": "GET /api/dashboard", "request": { "method": "GET", "url": "{{baseUrl}}/api/dashboard", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } }
+      ]
+    },
+    {
+      "name": "Profile",
+      "item": [
+        { "name": "Get my profile", "request": { "method": "GET", "url": "{{baseUrl}}/api/profile/me", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } },
+        {
+          "name": "Update my profile",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"designation\": \"Statistical Officer\",\n  \"department\": \"National Statistical Office\",\n  \"experienceYears\": 6\n}" },
+            "url": "{{baseUrl}}/api/profile/me"
+          }
+        },
+        { "name": "Update learning profile", "request": { "method": "PUT", "url": "{{baseUrl}}/api/profile/learning-profile", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"weeklyGoalMinutes\": 180,\n  \"preferredDifficulty\": \"MEDIUM\"\n}" } } }
+      ]
+    },
+    {
+      "name": "Assessment",
+      "item": [
+        {
+          "name": "Start assessment (gap-driven)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"competencyCodes\": [\"AI_ML\", \"PYTHON\"],\n  \"questionCount\": 5\n}" },
+            "url": "{{baseUrl}}/api/assessment/start"
+          }
+        },
+        {
+          "name": "Submit assessment",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"answers\": [\n    { \"questionId\": \"<id>\", \"selectedIndex\": 1 }\n  ],\n  \"timeSpentMinutes\": 12\n}" },
+            "url": "{{baseUrl}}/api/assessment/:id/submit"
+          }
+        },
+        { "name": "Assessment detail", "request": { "method": "GET", "url": "{{baseUrl}}/api/assessment/:id", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } },
+        { "name": "My history", "request": { "method": "GET", "url": "{{baseUrl}}/api/assessment/history/me", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } }
+      ]
+    },
+    {
+      "name": "Competencies & Skill Gaps",
+      "item": [
+        { "name": "All competencies", "request": { "method": "GET", "url": "{{baseUrl}}/api/competencies" } },
+        { "name": "Role matrix", "request": { "method": "GET", "url": "{{baseUrl}}/api/competencies/roles" } },
+        { "name": "My competency profile", "request": { "method": "GET", "url": "{{baseUrl}}/api/competencies/me", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } },
+        { "name": "My skill gaps", "request": { "method": "GET", "url": "{{baseUrl}}/api/skill-gaps/me", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } }
+      ]
+    },
+    {
+      "name": "Recommendations (hybrid engine)",
+      "item": [
+        { "name": "List (paginated)", "request": { "method": "GET", "url": "{{baseUrl}}/api/recommendations?page=1&limit=10", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } },
+        { "name": "Top N", "request": { "method": "GET", "url": "{{baseUrl}}/api/recommendations/top?limit=5", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } },
+        { "name": "For a skill", "request": { "method": "GET", "url": "{{baseUrl}}/api/recommendations/for-skill/:skillId", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } },
+        { "name": "Refresh now", "request": { "method": "POST", "url": "{{baseUrl}}/api/recommendations/refresh", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } },
+        { "name": "Dismiss", "request": { "method": "POST", "url": "{{baseUrl}}/api/recommendations/:id/dismiss", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } }
+      ]
+    },
+    {
+      "name": "Courses",
+      "item": [
+        { "name": "List (filter/sort/paginate)", "request": { "method": "GET", "url": "{{baseUrl}}/api/courses?page=1&limit=10&level=BEGINNER&sort=rating" } },
+        { "name": "Keyword search", "request": { "method": "GET", "url": "{{baseUrl}}/api/courses/search?q=python" } },
+        { "name": "Semantic search", "request": { "method": "GET", "url": "{{baseUrl}}/api/courses/search?q=python&semantic=true" } },
+        { "name": "Categories", "request": { "method": "GET", "url": "{{baseUrl}}/api/courses/categories" } },
+        { "name": "By category", "request": { "method": "GET", "url": "{{baseUrl}}/api/courses/category/:category" } },
+        { "name": "By skill", "request": { "method": "GET", "url": "{{baseUrl}}/api/courses/skill/:skillCode" } },
+        { "name": "Course detail", "request": { "method": "GET", "url": "{{baseUrl}}/api/courses/:id" } }
+      ]
+    },
+    {
+      "name": "Learning",
+      "item": [
+        { "name": "Enroll", "request": { "method": "POST", "url": "{{baseUrl}}/api/learning/enroll/:courseId", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } },
+        { "name": "My courses", "request": { "method": "GET", "url": "{{baseUrl}}/api/learning/my-courses", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } },
+        {
+          "name": "Update progress (module)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"moduleIndex\": 0,\n  \"timeSpentMinutes\": 25\n}" },
+            "url": "{{baseUrl}}/api/learning/:courseId/progress"
+          }
+        },
+        { "name": "Get progress", "request": { "method": "GET", "url": "{{baseUrl}}/api/learning/:courseId/progress", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } },
+        { "name": "Complete course", "request": { "method": "POST", "url": "{{baseUrl}}/api/learning/:courseId/complete", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } },
+        { "name": "Learning paths", "request": { "method": "GET", "url": "{{baseUrl}}/api/learning/paths", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } },
+        { "name": "Generate AI learning path", "request": { "method": "POST", "url": "{{baseUrl}}/api/learning/paths/generate", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } },
+        { "name": "Activity feed", "request": { "method": "GET", "url": "{{baseUrl}}/api/learning/activity", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } },
+        { "name": "Summary", "request": { "method": "GET", "url": "{{baseUrl}}/api/learning/summary", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } }
+      ]
+    },
+    {
+      "name": "Materials",
+      "item": [
+        {
+          "name": "Upload (PDF/DOCX/PPTX/TXT)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "body": { "mode": "formdata", "formdata": [
+              { "key": "file", "type": "file", "src": [] },
+              { "key": "title", "value": "ML Primer", "type": "text" },
+              { "key": "competencyCode", "value": "AI_ML", "type": "text" }
+            ] },
+            "url": "{{baseUrl}}/api/materials/upload"
+          }
+        },
+        { "name": "My materials", "request": { "method": "GET", "url": "{{baseUrl}}/api/materials", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } },
+        { "name": "Material detail", "request": { "method": "GET", "url": "{{baseUrl}}/api/materials/:id", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } },
+        { "name": "Chunks", "request": { "method": "GET", "url": "{{baseUrl}}/api/materials/:id/chunks", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } },
+        { "name": "Delete", "request": { "method": "DELETE", "url": "{{baseUrl}}/api/materials/:id", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } }
+      ]
+    },
+    {
+      "name": "Quizzes",
+      "item": [
+        { "name": "Published quizzes", "request": { "method": "GET", "url": "{{baseUrl}}/api/quizzes?page=1&limit=10" } },
+        { "name": "My attempts", "request": { "method": "GET", "url": "{{baseUrl}}/api/quizzes/attempts/me", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } },
+        { "name": "Quiz detail (learner view)", "request": { "method": "GET", "url": "{{baseUrl}}/api/quizzes/:id", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } },
+        {
+          "name": "Submit attempt (server-scored)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"answers\": [\n    { \"questionId\": \"<id>\", \"selectedIndex\": 0 }\n  ],\n  \"timeTakenSeconds\": 180\n}" },
+            "url": "{{baseUrl}}/api/quizzes/:id/submit"
+          }
+        },
+        {
+          "name": "TRAINER — Generate with AI",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{trainerToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"topic\": \"Machine learning fundamentals for official statistics\",\n  \"competencyCode\": \"AI_ML\",\n  \"count\": 5\n}" },
+            "url": "{{baseUrl}}/api/trainer/quizzes/generate"
+          }
+        },
+        { "name": "TRAINER — Update / review", "request": { "method": "PUT", "url": "{{baseUrl}}/api/trainer/quizzes/:id", "header": [{ "key": "Authorization", "value": "Bearer {{trainerToken }}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"title\": \"Reviewed title\"\n}" } } },
+        { "name": "TRAINER — Publish", "request": { "method": "POST", "url": "{{baseUrl}}/api/trainer/quizzes/:id/publish", "header": [{ "key": "Authorization", "value": "Bearer {{trainerToken}}" }] } }
+      ]
+    },
+    {
+      "name": "Gamification",
+      "item": [
+        { "name": "Streak", "request": { "method": "GET", "url": "{{baseUrl}}/api/streak", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } },
+        { "name": "Achievements catalogue", "request": { "method": "GET", "url": "{{baseUrl}}/api/achievements" } },
+        { "name": "My achievements", "request": { "method": "GET", "url": "{{baseUrl}}/api/achievements/me", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } }
+      ]
+    },
+    {
+      "name": "Communities",
+      "item": [
+        { "name": "List communities", "request": { "method": "GET", "url": "{{baseUrl}}/api/communities", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } },
+        { "name": "Join", "request": { "method": "POST", "url": "{{baseUrl}}/api/communities/:id/join", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } },
+        { "name": "Leave", "request": { "method": "POST", "url": "{{baseUrl}}/api/communities/:id/leave", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } },
+        { "name": "Members", "request": { "method": "GET", "url": "{{baseUrl}}/api/communities/:id/members", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } },
+        { "name": "Messages", "request": { "method": "GET", "url": "{{baseUrl}}/api/communities/:id/messages", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } },
+        {
+          "name": "Post message",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"content\": \"Hello from Postman!\"\n}" },
+            "url": "{{baseUrl}}/api/communities/:id/messages"
+          }
+        },
+        {
+          "name": "Report message",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"messageId\": \"<messageId>\",\n  \"reason\": \"SPAM\"\n}" },
+            "url": "{{baseUrl}}/api/communities/:id/report"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "item": [
+        { "name": "List", "request": { "method": "GET", "url": "{{baseUrl}}/api/notifications", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } },
+        { "name": "Mark all read", "request": { "method": "POST", "url": "{{baseUrl}}/api/notifications/read-all", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } },
+        { "name": "Mark one read", "request": { "method": "POST", "url": "{{baseUrl}}/api/notifications/:id/read", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } }
+      ]
+    },
+    {
+      "name": "AI Assistant",
+      "item": [
+        {
+          "name": "Chat (grounded in user context)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"message\": \"What should I learn next?\"\n}" },
+            "url": "{{baseUrl}}/api/ai/chat"
+          }
+        },
+        { "name": "Provider status", "request": { "method": "GET", "url": "{{baseUrl}}/api/ai/status", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } },
+        { "name": "Generate study plan", "request": { "method": "POST", "url": "{{baseUrl}}/api/ai/study-plan", "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }] } }
+      ]
+    },
+    {
+      "name": "Search",
+      "item": [
+        { "name": "Global search", "request": { "method": "GET", "url": "{{baseUrl}}/api/search?q=machine&semantic=false" } }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        { "name": "Analytics", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/analytics", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }] } },
+        { "name": "Users", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/users?page=1&limit=20", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }] } },
+        { "name": "Providers", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/providers", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }] } },
+        { "name": "Trigger course sync", "request": { "method": "POST", "url": "{{baseUrl}}/api/admin/course-sync", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }] } },
+        { "name": "Audit logs", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/audit-logs?limit=20", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }] } }
+      ]
+    }
+  ]
+}
