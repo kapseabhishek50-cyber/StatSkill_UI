@@ -1,32 +1,48 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { GraduationCap, Trophy, Clock, Zap, BarChart3, Sparkles, CheckCircle2 } from 'lucide-react';
+import { BarChart3, CheckCircle2, Clock, Sparkles, Trophy, Zap } from 'lucide-react';
 import QuizResult from '../../components/QuizResult.jsx';
 import QuizRunner from '../../components/QuizRunner.jsx';
 import { Badge, Card, Empty, ErrorNote, Loading, StatTile } from '../../components/ui.jsx';
 import { useApi, useMutation } from '../../hooks/useApi.js';
-import { api, endpoints, formatDate, levelLabel, percent } from '../../lib/index.js';
+import { api, endpoints, formatDate, percent } from '../../lib/index.js';
+import { attemptToRow, priorityToBand, quizSubmitToResult, quizToAttempt, scoreToLevel } from '../../lib/adapters.js';
 
 export default function Quiz() {
   const { competencyId } = useParams();
   const navigate = useNavigate();
-  const path = useApi(endpoints.recommendations);
+  const quizzesApi = useApi(endpoints.quizList);
+  const gapsApi = useApi(endpoints.skillGaps);
   const history = useApi(endpoints.quizHistory);
   const [attempt, setAttempt] = useState(null);
   const [result, setResult] = useState(null);
 
-  const start = useMutation(async ({ competency, targetLevel }) => {
-    const payload = await api.post(endpoints.quizStart, { competency, targetLevel });
+  const gapByCompetency = useMemo(() => {
+    const map = new Map();
+    for (const gap of gapsApi.data?.skillGaps ?? []) {
+      map.set(String(gap.competencyId), gap);
+    }
+    return map;
+  }, [gapsApi.data]);
+
+  const start = useMutation(async (quizId) => {
+    const payload = await api.get(endpoints.quizDetail(quizId));
+    const quiz = payload?.quiz ?? payload;
     setResult(null);
-    setAttempt(payload);
-    return payload;
+    setAttempt(quizToAttempt(quiz));
+    return quiz;
   });
 
   const submit = useMutation(async (answers) => {
-    const payload = await api.post(endpoints.quizSubmit, { attemptId: attempt.attemptId, answers });
-    setResult(payload.result);
+    const payload = await api.post(endpoints.quizSubmit(attempt.quizId), {
+      answers: answers.map((answer) => ({
+        questionId: answer.question,
+        selectedIndex: answer.option === null || answer.option === undefined ? -1 : Number(answer.option),
+      })),
+    });
+    setResult(quizSubmitToResult(payload));
     setAttempt(null);
-    path.refetch();
+    gapsApi.refetch();
     history.refetch();
     return payload;
   });
@@ -54,12 +70,24 @@ export default function Quiz() {
     );
   }
 
-  if (path.loading) return <Loading label="Loading your competencies" />;
+  if (quizzesApi.loading) return <Loading label="Loading published quizzes" />;
 
-  const items = path.data?.path ?? [];
-  const preselected = competencyId ? items.filter((item) => item.competencyId === competencyId) : items;
-  const choices = preselected.length ? preselected : items;
-  const results = history.data?.results ?? [];
+  const all = quizzesApi.data?.items ?? [];
+  // Quizzes matched to the officer's open gaps float to the top; a deep link
+  // (/quiz/:competencyId) filters to that competency's quizzes first.
+  const withMatches = all.map((quiz) => {
+    const matched = (quiz.competencyIds ?? [])
+      .map((id) => gapByCompetency.get(String(id)))
+      .find(Boolean);
+    return { quiz, matched };
+  });
+  const preselected = competencyId
+    ? withMatches.filter(({ quiz }) => (quiz.competencyIds ?? []).map(String).includes(String(competencyId)))
+    : [];
+  const choices = (preselected.length ? preselected : withMatches).sort(
+    (a, b) => Number(Boolean(b.matched)) - Number(Boolean(a.matched)),
+  );
+  const results = (history.data?.attempts ?? []).map(attemptToRow);
 
   const pastQuizzes = results.filter((r) => r.passed || r.scorePct);
 
@@ -76,12 +104,12 @@ export default function Quiz() {
         </p>
       </div>
 
-      <ErrorNote error={path.error ?? start.error} onRetry={path.refetch} />
+      <ErrorNote error={quizzesApi.error ?? start.error} onRetry={quizzesApi.refetch} />
 
       {!choices.length && (
         <Card>
           <Empty>
-            No competencies to test yet. Complete the self-assessment first.
+            No published quizzes yet. Trainers publish them from the question bank.
           </Empty>
         </Card>
       )}
@@ -100,56 +128,56 @@ export default function Quiz() {
         </div>
       )}
 
-      {/* ── Competency Quiz Cards ─────────────────────────── */}
+      {/* ── Quiz Cards ─────────────────────────── */}
       <div className="grid gap-4 md:grid-cols-2">
-        {choices.map((item) => {
-          const level = Math.min(item.currentLevel + 1, item.requiredLevel);
-          return (
-            <Card key={item.competencyId} className="card-hover">
-              <div className="flex items-start justify-between gap-3">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-[15px] font-bold text-ink">{item.competency?.name}</h2>
-                    <Badge band={item.band} />
-                  </div>
-                  <p className="text-xs text-ink-2">
-                    Current Level {item.currentLevel} · Role needs Level {item.requiredLevel}
+        {choices.map(({ quiz, matched }) => (
+          <Card key={quiz._id ?? quiz.id} className="card-hover">
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-[15px] font-bold text-ink">{quiz.title}</h2>
+                  {matched && <Badge band={priorityToBand(matched.priority)} />}
+                </div>
+                <p className="text-xs text-ink-2">
+                  {(quiz.topics ?? []).slice(0, 3).join(' · ') || 'General'} · {quiz.questionCount ?? quiz.questions?.length ?? 0} questions
+                </p>
+                {matched && (
+                  <p className="text-xs text-ink-muted mt-1 leading-relaxed">
+                    Matches your {matched.competencyName} gap (Level {scoreToLevel(matched.currentScore)} → needs {scoreToLevel(matched.requiredScore)}).
                   </p>
-                  {item.explanation && (
-                    <p className="text-xs text-ink-muted mt-1 leading-relaxed">{item.explanation}</p>
-                  )}
-                </div>
+                )}
+              </div>
+              {matched ? (
                 <div className="flex flex-col items-end gap-2">
-                  <span className="pill pill-primary">
-                    Next: Level {level}
-                  </span>
-                  <span className="text-xs text-ink-muted">{levelLabel(level)}</span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between mt-4 pt-4 border-t border-hairline">
-                <div className="flex items-center gap-4">
-                  <span className="flex items-center gap-1.5 text-xs text-ink-muted">
-                    <Clock size={14} /> ~30 min
-                  </span>
-                  <span className="flex items-center gap-1.5 text-xs text-ink-muted">
-                    <BarChart3 size={14} /> 70% pass
+                  <span className="pill pill-ai">
+                    Gap match
                   </span>
                 </div>
+              ) : null}
+            </div>
 
-                <button
-                  type="button"
-                  className="btn btn-primary !text-xs flex items-center gap-2"
-                  disabled={start.loading}
-                  onClick={() => start.run({ competency: item.competencyId, targetLevel: level })}
-                >
-                  <Sparkles size={14} />
-                  {start.loading ? 'Preparing questions…' : `Start Level ${level} Quiz`}
-                </button>
+            <div className="flex items-center justify-between mt-4 pt-4 border-t border-hairline">
+              <div className="flex items-center gap-4">
+                <span className="flex items-center gap-1.5 text-xs text-ink-muted">
+                  <Clock size={14} /> ~{quiz.durationMinutes ?? 10} min
+                </span>
+                <span className="flex items-center gap-1.5 text-xs text-ink-muted">
+                  <BarChart3 size={14} /> 70% pass
+                </span>
               </div>
-            </Card>
-          );
-        })}
+
+              <button
+                type="button"
+                className="btn btn-primary !text-xs flex items-center gap-2"
+                disabled={start.loading}
+                onClick={() => start.run(quiz._id ?? quiz.id)}
+              >
+                <Sparkles size={14} />
+                {start.loading ? 'Preparing questions…' : 'Start Quiz'}
+              </button>
+            </div>
+          </Card>
+        ))}
       </div>
 
       {/* ── Past Attempts Table ──────────────────────────── */}
@@ -159,8 +187,7 @@ export default function Quiz() {
             <table className="w-full text-left text-xs">
               <thead>
                 <tr className="border-b border-hairline text-ink-2">
-                  <th className="py-3 pr-4 font-semibold">Competency</th>
-                  <th className="py-3 pr-4 font-semibold">Level</th>
+                  <th className="py-3 pr-4 font-semibold">Quiz</th>
                   <th className="py-3 pr-4 font-semibold">Score</th>
                   <th className="py-3 pr-4 font-semibold">Outcome</th>
                   <th className="py-3 font-semibold">Date</th>
@@ -169,14 +196,13 @@ export default function Quiz() {
               <tbody className="text-ink">
                 {results.map((entry) => (
                   <tr key={entry._id} className="border-b border-hairline last:border-0">
-                    <td className="py-3 pr-4 font-medium">{entry.competency?.name ?? '—'}</td>
-                    <td className="py-3 pr-4">{entry.targetLevel}</td>
+                    <td className="py-3 pr-4 font-medium">{entry.quizTitle}</td>
                     <td className="py-3 pr-4 font-bold text-primary">{percent(entry.scoreRatio)}</td>
                     <td className="py-3 pr-4">
                       {entry.passed ? (
                         <span className="flex items-center gap-1 font-semibold" style={{ color: 'var(--status-good)' }}>
                           <CheckCircle2 size={14} />
-                          {entry.levelBefore} → {entry.levelAfter}
+                          Passed
                         </span>
                       ) : (
                         <span className="text-ink-muted">Not recorded</span>

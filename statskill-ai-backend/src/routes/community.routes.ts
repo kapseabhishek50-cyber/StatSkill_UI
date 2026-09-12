@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/auth.middleware';
 import { communityController } from '../controllers/community.controller';
 import { validate } from '../middleware/validation.middleware';
-import { createCommunitySchema, sendMessageSchema, reportMessageSchema } from '../validators/community.validator';
+import { createCommunitySchema, sendMessageSchema, reportMessageSchema, askAiSchema } from '../validators/community.validator';
 
 const router = Router();
 
@@ -15,6 +15,7 @@ router.post('/:id/leave', communityController.leave);
 router.get('/:id/members', communityController.members);
 router.get('/:id/messages', communityController.messages);
 router.post('/:id/messages', validate({ body: sendMessageSchema }), communityController.send);
+router.post('/:id/ask-ai', validate({ body: askAiSchema }), communityController.askAi);
 router.delete('/:id/messages/:messageId', communityController.deleteMessage);
 router.post('/:id/messages/:messageId/report', validate({ body: reportMessageSchema }), communityController.reportMessage);
 

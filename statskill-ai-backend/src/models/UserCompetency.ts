@@ -33,7 +33,7 @@ const userCompetencySchema = new Schema<IUserCompetency>(
     priority: { type: String, enum: ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'], default: 'LOW' },
     confidence: { type: Number, min: 0, max: 1, default: 0.5 },
     initialScore: { type: Number, min: 0, max: 100, default: 0 },
-    source: { type: String, enum: ['ASSESSMENT', 'QUIZ', 'COURSE', 'MANUAL', 'IMPORT', 'SEED'], default: 'ASSESSMENT' },
+    source: { type: String, enum: ['ASSESSMENT', 'QUIZ', 'COURSE', 'MANUAL', 'IMPORT', 'SEED', 'SELF_REPORTED'], default: 'ASSESSMENT' },
     lastAssessedAt: { type: Date },
   },
   { timestamps: true }

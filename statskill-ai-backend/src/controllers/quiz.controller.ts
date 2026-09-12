@@ -23,7 +23,10 @@ export const quizController = {
 
   myAttempts: asyncHandler(async (req: Request, res: Response) => {
     const { QuizAttempt } = await import('../models/QuizAttempt');
-    const attempts = await QuizAttempt.find({ userId: req.user!.id }).sort({ submittedAt: -1 }).limit(50);
+    const attempts = await QuizAttempt.find({ userId: req.user!.id })
+      .sort({ submittedAt: -1 })
+      .limit(50)
+      .populate('quizId', 'title status');
     sendSuccess(res, { attempts }, 'My quiz attempts');
   }),
 

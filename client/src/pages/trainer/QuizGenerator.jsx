@@ -5,73 +5,95 @@ import {
   Sparkles,
   CheckCircle2,
   Check,
-  AlertCircle,
   BookOpen,
-  ArrowRight,
   Send,
-  HelpCircle,
 } from 'lucide-react';
-import { Card, Loading, ErrorNote, Empty, Badge } from '../../components/ui.jsx';
+import { Card, Loading, ErrorNote, Empty } from '../../components/ui.jsx';
 import { useApi, useMutation } from '../../hooks/useApi.js';
 import { api, endpoints } from '../../lib/index.js';
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export default function QuizGenerator() {
   const compApi = useApi(endpoints.competencies);
   const competencies = compApi.data?.competencies ?? [];
 
   const [file, setFile] = useState(null);
-  const [competencyId, setCompetencyId] = useState('');
+  const [competencyCode, setCompetencyCode] = useState('');
   const [count, setCount] = useState(5);
-  const [difficulty, setDifficulty] = useState('Medium');
-  const [language, setLanguage] = useState('English');
+  const [difficulty, setDifficulty] = useState('medium');
+  const [language, setLanguage] = useState('english');
   const [title, setTitle] = useState('');
 
   const [generatedQuestions, setGeneratedQuestions] = useState([]);
   const [uploadResult, setUploadResult] = useState(null);
+  const [draftQuizId, setDraftQuizId] = useState(null);
   const [published, setPublished] = useState(false);
+  const [stage, setStage] = useState('');
 
-  // 1. Upload & Generate Mutation
+  // 1. Upload → wait for extraction → generate draft quiz.
   const generateMutation = useMutation(async () => {
     if (!file) throw new Error('Please select a training document (PDF, DOCX, PPTX, or TXT).');
-    if (!competencyId) throw new Error('Please select a target competency.');
+    if (!competencyCode) throw new Error('Please select a target competency.');
 
     const formData = new FormData();
-    formData.append('material', file);
-    formData.append('title', title || file.name);
-    formData.append('competencyId', competencyId);
-    formData.append('count', count);
-    formData.append('difficulty', difficulty);
-    formData.append('language', language);
+    formData.append('file', file);
+    formData.append('title', title || file.name.replace(/\.[^.]+$/, ''));
 
-    // Step A: Upload & Extract
+    // Step A: upload (extraction runs as a background job).
+    setStage('Uploading document…');
     const uploadRes = await api.post(endpoints.trainerUploadMaterial, formData);
-    setUploadResult(uploadRes.material);
+    const material = uploadRes.material;
+    if (!material?._id && !material?.id) throw new Error('Upload did not return a material id.');
+    const materialId = String(material._id ?? material.id);
 
-    // Step B: Generate MCQs from extracted text
+    // Step B: wait until the text is extracted and chunked.
+    setStage('Extracting text from the document…');
+    let ready = null;
+    for (let attempt = 0; attempt < 45; attempt += 1) {
+      await sleep(2000);
+      const current = await api.get(endpoints.trainerMaterial(materialId));
+      if (current.material?.status === 'READY') {
+        ready = current.material;
+        break;
+      }
+      if (current.material?.status === 'FAILED') {
+        throw new Error(`Extraction failed: ${current.material?.error ?? 'unreadable document'}`);
+      }
+    }
+    if (!ready) throw new Error('Extraction is taking too long — the material is saved; retry generation from it later.');
+    setUploadResult({ filename: ready.originalName ?? file.name, chars: ready.extractedChars ?? 0 });
+
+    // Step C: generate MCQs from the extracted text (stored as a draft quiz).
+    setStage('Generating validated questions…');
     const genRes = await api.post(endpoints.trainerGenerateQuiz, {
-      materialId: uploadRes.material.id,
-      competencyId,
+      materialId,
+      competencyCode,
       count,
       difficulty,
       language,
-      fileName: file.name,
     });
-
-    setGeneratedQuestions(genRes.questions || []);
+    const quiz = genRes.quiz;
+    setDraftQuizId(String(quiz._id ?? quiz.id));
+    setGeneratedQuestions(
+      (quiz.questions ?? []).map((q) => ({
+        stem: q.question,
+        options: (q.options ?? []).map((text, i) => ({ text, isCorrect: i === q.correctAnswer })),
+        explanation: q.explanation,
+      })),
+    );
     setPublished(false);
+    setStage('');
   });
 
-  // 2. Publish Mutation
+  // 2. Publish the reviewed draft to the live quiz bank.
   const publishMutation = useMutation(async () => {
-    if (!generatedQuestions.length) return;
-    await api.post(endpoints.trainerPublishQuiz, {
-      competencyId,
-      questions: generatedQuestions,
-    });
+    if (!draftQuizId) return;
+    await api.post(endpoints.trainerPublishQuiz(draftQuizId), {});
     setPublished(true);
   });
 
-  if (compApi.loading) return <Loading label="Loading MoSPI competency framework" />;
+  if (compApi.loading) return <Loading label="Loading competency framework" />;
 
   return (
     <div className="space-y-6">
@@ -84,11 +106,11 @@ export default function QuizGenerator() {
           <h1 className="text-h1 font-bold text-ink">AI Document-to-Quiz Generator</h1>
         </div>
         <p className="mt-0.5 text-[13px] text-ink-2">
-          Upload official MoSPI/NSSTA training materials, survey handbooks, or methodology circulars (PDF, DOCX, PPTX, TXT) to generate mechanically validated objective assessments.
+          Upload official training materials, survey handbooks, or methodology circulars (PDF, DOCX, PPTX, TXT) to generate mechanically validated objective assessments.
         </p>
       </div>
 
-      <ErrorNote error={generateMutation.error || publishMutation.error} />
+      <ErrorNote error={generateMutation.error || publishMutation.error || compApi.error} />
 
       {/* Generator Configuration Grid */}
       <div className="grid gap-6 lg:grid-cols-12">
@@ -131,13 +153,13 @@ export default function QuizGenerator() {
               <div>
                 <label className="label">Target Competency</label>
                 <select
-                  value={competencyId}
-                  onChange={(e) => setCompetencyId(e.target.value)}
+                  value={competencyCode}
+                  onChange={(e) => setCompetencyCode(e.target.value)}
                   className="field text-xs w-full mt-1"
                 >
-                  <option value="">Select MoSPI Competency...</option>
+                  <option value="">Select Competency...</option>
                   {competencies.map((c) => (
-                    <option key={c._id} value={c._id}>
+                    <option key={c._id} value={c.code}>
                       {c.name} ({c.category})
                     </option>
                   ))}
@@ -164,9 +186,9 @@ export default function QuizGenerator() {
                     onChange={(e) => setDifficulty(e.target.value)}
                     className="field text-xs w-full mt-1"
                   >
-                    <option value="Easy">Easy (L2)</option>
-                    <option value="Medium">Medium (L3)</option>
-                    <option value="Hard">Hard (L4)</option>
+                    <option value="easy">Easy</option>
+                    <option value="medium">Medium</option>
+                    <option value="hard">Hard</option>
                   </select>
                 </div>
                 <div>
@@ -176,8 +198,8 @@ export default function QuizGenerator() {
                     onChange={(e) => setLanguage(e.target.value)}
                     className="field text-xs w-full mt-1"
                   >
-                    <option value="English">English</option>
-                    <option value="Hindi">Hindi</option>
+                    <option value="english">English</option>
+                    <option value="hindi">Hindi</option>
                   </select>
                 </div>
               </div>
@@ -185,11 +207,11 @@ export default function QuizGenerator() {
               <button
                 type="button"
                 onClick={() => generateMutation.run()}
-                disabled={!file || !competencyId || generateMutation.loading}
+                disabled={!file || !competencyCode || generateMutation.loading}
                 className="btn-primary w-full text-xs py-2.5 flex items-center justify-center gap-2 mt-4"
               >
                 <Sparkles size={16} />
-                <span>{generateMutation.loading ? 'Parsing & Generating with AI...' : 'Generate Validated MCQs'}</span>
+                <span>{generateMutation.loading ? stage || 'Working…' : 'Generate Validated MCQs'}</span>
               </button>
             </div>
           </Card>
@@ -230,7 +252,7 @@ export default function QuizGenerator() {
             }
           >
             {generateMutation.loading ? (
-              <Loading label="Extracting document text and running mechanical validation" />
+              <Loading label={stage || 'Extracting document text and running mechanical validation'} />
             ) : generatedQuestions.length === 0 ? (
               <Empty>
                 Upload a training document on the left and click &quot;Generate Validated MCQs&quot; to preview synthesized questions.
@@ -292,4 +314,3 @@ export default function QuizGenerator() {
     </div>
   );
 }
-

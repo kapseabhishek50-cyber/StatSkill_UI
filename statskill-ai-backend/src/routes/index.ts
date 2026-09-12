@@ -19,6 +19,8 @@ import trainerRoutes from './trainer.routes';
 import adminRoutes from './admin.routes';
 import healthRoutes from './health.routes';
 import searchRoutes from './search.routes';
+import statsRoutes from './stats.routes';
+import leaderboardRoutes from './leaderboard.routes';
 
 const router = Router();
 
@@ -42,5 +44,7 @@ router.use('/trainer', trainerRoutes);
 router.use('/admin', adminRoutes);
 router.use('/search', searchRoutes);
 router.use('/health', healthRoutes);
+router.use('/stats', statsRoutes);
+router.use('/leaderboard', leaderboardRoutes);
 
 export default router;

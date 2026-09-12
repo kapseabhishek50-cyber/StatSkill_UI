@@ -104,9 +104,42 @@ export const skillGapService = {
     );
   },
 
-  /** Platform-wide aggregated gaps (admin analytics). */
-  async aggregatedTopGaps(limit = 10) {
-    return SkillGap.aggregate([
+  /** Platform-wide aggregated gaps (admin analytics), optionally within one department. */
+  async aggregatedTopGaps(limit = 10, department?: string) {
+    // $lookup-based department filter; EasyDB aggregation support is partial,
+    // so fall back to a two-query path when the pipeline returns nothing useful.
+    if (department) {
+      const { User } = await import('../../models/User');
+      const users = await User.find({ department }).select('_id');
+      const ids = users.map((u) => u._id);
+      if (!ids.length) return [];
+      const gaps = await SkillGap.find({ userId: { $in: ids }, gap: { $gt: 0 } });
+      const byCode = new Map<string, { name: string; category?: string; gaps: number[]; current: number[]; required: number[]; critical: number }>();
+      for (const g of gaps) {
+        const code = String(g.competencyCode);
+        const cur = byCode.get(code) ?? { name: g.competencyName ?? code, category: g.category, gaps: [], current: [], required: [], critical: 0 };
+        cur.gaps.push(g.gap);
+        cur.current.push(g.currentScore);
+        cur.required.push(g.requiredScore);
+        if (g.priority === 'CRITICAL') cur.critical += 1;
+        byCode.set(code, cur);
+      }
+      const avg = (xs: number[]): number => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
+      return [...byCode.entries()]
+        .map(([code, v]) => ({
+          _id: code,
+          competencyName: v.name,
+          category: v.category,
+          affectedUsers: v.gaps.length,
+          avgGap: Math.round(avg(v.gaps) * 10) / 10,
+          avgCurrent: Math.round(avg(v.current) * 10) / 10,
+          avgRequired: Math.round(avg(v.required) * 10) / 10,
+          criticalCount: v.critical,
+        }))
+        .sort((a, b) => b.affectedUsers - a.affectedUsers || b.avgGap - a.avgGap)
+        .slice(0, limit);
+    }
+    const rows = await SkillGap.aggregate([
       { $match: { status: { $ne: 'CLOSED' } } },
       {
         $group: {
@@ -115,11 +148,24 @@ export const skillGapService = {
           category: { $first: '$category' },
           affectedUsers: { $sum: 1 },
           avgGap: { $avg: '$gap' },
+          avgCurrent: { $avg: '$currentScore' },
+          avgRequired: { $avg: '$requiredScore' },
           criticalCount: { $sum: { $cond: [{ $eq: ['$priority', 'CRITICAL'] }, 1, 0] } },
         },
       },
       { $sort: { affectedUsers: -1, avgGap: -1 } },
       { $limit: limit },
     ]);
+    // Normalize aggregation output (EasyDB may return ObjectIds/Decimals oddly).
+    return rows.map((r) => ({
+      _id: String(r._id),
+      competencyName: r.competencyName,
+      category: r.category,
+      affectedUsers: Number(r.affectedUsers ?? 0),
+      avgGap: Math.round(Number(r.avgGap ?? 0) * 10) / 10,
+      avgCurrent: Math.round(Number(r.avgCurrent ?? 0) * 10) / 10,
+      avgRequired: Math.round(Number(r.avgRequired ?? 0) * 10) / 10,
+      criticalCount: Number(r.criticalCount ?? 0) || 0,
+    }));
   },
 };

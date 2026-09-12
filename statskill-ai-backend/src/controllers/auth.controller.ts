@@ -75,4 +75,27 @@ export const authController = {
     if (!user) throw unauthorized();
     sendSuccess(res, { user: publicUser(user) }, 'Current user');
   }),
+
+  /** Public: departments + job roles for the registration form (no auth). */
+  registerOptions: asyncHandler(async (_req: Request, res: Response) => {
+    const { Role } = await import('../models/Role');
+    const roles = await Role.find({ isActive: true }).sort({ name: 1 });
+    const departments = [...new Set(roles.map((r) => r.department).filter(Boolean))].sort();
+    // Fallback list keeps registration usable even with an empty Role collection.
+    const fallbackDepartments = [
+      'National Statistical Office',
+      'MoSPI',
+      'NSSTA',
+      'State Directorate of Economics & Statistics',
+      'Survey Division',
+    ];
+    sendSuccess(
+      res,
+      {
+        departments: departments.length ? departments : fallbackDepartments,
+        jobRoles: roles.map((r) => ({ _id: r._id, title: r.name, code: r.code, department: r.department ?? null })),
+      },
+      'Registration options'
+    );
+  }),
 };

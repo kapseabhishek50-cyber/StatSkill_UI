@@ -21,16 +21,18 @@ export default function Officers() {
   const divisions = heatmap.data?.departments ?? [];
 
   const query = new URLSearchParams();
+  query.set('enrich', 'true');
+  query.set('role', 'LEARNER');
   if (department) query.set('department', department);
   if (search) query.set('search', search);
-  const queryString = query.toString() ? `?${query.toString()}` : '';
+  const queryString = `?${query.toString()}`;
 
   const listApi = useApi(`${endpoints.adminOfficers}${queryString}`, {
     deps: [department, search],
     enabled: !selectedOfficer,
   });
 
-  const detailApi = useApi(`${endpoints.adminOfficers}/${selectedOfficer}`, {
+  const detailApi = useApi(`${endpoints.adminOfficers}/${selectedOfficer}/detail`, {
     enabled: !!selectedOfficer,
     deps: [selectedOfficer],
   });
@@ -147,8 +149,7 @@ export default function Officers() {
                   <table className="w-full text-left text-xs">
                     <thead>
                       <tr className="border-b border-hairline text-ink-2">
-                        <th className="py-2 pr-3 font-medium">Competency</th>
-                        <th className="py-2 pr-3 font-medium">Level</th>
+                        <th className="py-2 pr-3 font-medium">Quiz</th>
                         <th className="py-2 pr-3 font-medium">Score</th>
                         <th className="py-2 pr-3 font-medium">Outcome</th>
                         <th className="py-2 font-medium">Date</th>
@@ -157,16 +158,22 @@ export default function Officers() {
                     <tbody className="text-ink">
                       {quizzes.map((q) => (
                         <tr key={String(q._id)} className="border-b border-hairline last:border-0">
-                          <td className="py-2 pr-3">{q.competency?.name ?? '—'}</td>
-                          <td className="py-2 pr-3">{q.targetLevel}</td>
+                          <td className="py-2 pr-3">
+                            {q.quizTitle ?? q.competency?.name ?? '—'}
+                            {q.topics?.length > 0 && (
+                              <span className="block text-[11px] font-normal text-ink-muted">
+                                {q.topics.map((t) => t.topic).join(' · ')}
+                              </span>
+                            )}
+                          </td>
                           <td className="py-2 pr-3">{percent(q.scoreRatio)}</td>
                           <td className="py-2 pr-3">
                             {q.passed ? (
                               <span style={{ color: 'var(--delta-up)' }}>
-                                Recorded {q.levelBefore} → {q.levelAfter}
+                                Passed{q.xpAwarded ? ` · +${q.xpAwarded} XP` : ''}
                               </span>
                             ) : (
-                              <span className="text-ink-2">Not recorded</span>
+                              <span className="text-ink-2">Not passed</span>
                             )}
                           </td>
                           <td className="py-2">{formatDate(q.createdAt)}</td>

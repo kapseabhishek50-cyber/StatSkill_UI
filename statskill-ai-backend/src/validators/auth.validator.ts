@@ -7,6 +7,8 @@ export const registerSchema = z.object({
   employeeId: z.string().max(40).optional(),
   role: z.enum(['LEARNER', 'TRAINER']).optional(),
   designation: z.string().max(120).optional(),
+  /** Job-role reference from GET /auth/register/options (role id or role name). */
+  jobRole: z.string().max(120).optional(),
   department: z.string().max(120).optional(),
   organization: z.string().max(160).optional(),
   experience: z.coerce.number().min(0).max(50).optional(),

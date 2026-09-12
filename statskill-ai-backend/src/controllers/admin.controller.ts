@@ -9,6 +9,7 @@ import { courseService } from '../services/course/course.service';
 import { courseSyncService } from '../services/integrations/courseSync.service';
 import { providerStatuses } from '../services/integrations';
 import { AuditLog } from '../models/AuditLog';
+import { adminInsightsService } from '../services/analytics/adminInsights.service';
 import { notFound, badRequest } from '../utils/errors';
 
 export const adminController = {
@@ -22,13 +23,48 @@ export const adminController = {
     const filter: Record<string, unknown> = {};
     if (req.query.role) filter.role = String(req.query.role).toUpperCase();
     if (req.query.department) filter.department = req.query.department;
-    if (req.query.q) filter.$or = [{ name: new RegExp(String(req.query.q), 'i') }, { email: new RegExp(String(req.query.q), 'i') }];
+    const search = req.query.q ?? req.query.search;
+    if (search) filter.$or = [{ name: new RegExp(String(search), 'i') }, { email: new RegExp(String(search), 'i') }];
     if (req.query.isActive !== undefined) filter.isActive = String(req.query.isActive) === 'true';
     const [items, total] = await Promise.all([
       User.find(filter).select('-passwordHash -refreshTokens').sort(mongoSort(p)).skip(p.skip).limit(p.limit),
       User.countDocuments(filter),
     ]);
+    // ?enrich=true adds per-officer readiness + open gap count for the directory.
+    if (String(req.query.enrich ?? '') === 'true') {
+      const ids = items.map((u) => String(u._id));
+      const enriched = await adminInsightsService.enrichUsers(ids);
+      const withStats = items.map((u) => {
+        const stats = enriched.get(String(u._id)) ?? { readiness: 0, gapCount: 0 };
+        return {
+          ...u.toObject(),
+          id: String(u._id),
+          department: { name: u.department ?? 'Unassigned' },
+          jobRole: { title: u.designation ?? '—' },
+          readiness: stats.readiness,
+          gapCount: stats.gapCount,
+        };
+      });
+      return sendSuccess(res, { officers: withStats, items: withStats, pagination: buildPagination(total, p) }, 'Users');
+    }
     sendSuccess(res, { items, pagination: buildPagination(total, p) }, 'Users');
+  }),
+
+  /** Officer 360° detail for the admin directory (read is audit-logged). */
+  userDetail: asyncHandler(async (req: Request, res: Response) => {
+    const detail = await adminInsightsService.userDetail(req.params.id);
+    const { audit } = await import('../middleware/audit.middleware');
+    void audit(req, 'OFFICER_VIEWED', 'user', req.params.id);
+    sendSuccess(res, detail, 'Officer detail');
+  }),
+
+  /** Division × competency heatmap for workforce analytics. */
+  heatmap: asyncHandler(async (req: Request, res: Response) => {
+    const heat = await adminInsightsService.heatmap(
+      Math.min(20, Number(req.query.departments) || 12),
+      Math.min(24, Number(req.query.competencies) || 16)
+    );
+    sendSuccess(res, heat, 'Workforce heatmap');
   }),
 
   updateUserRole: asyncHandler(async (req: Request, res: Response) => {
@@ -55,7 +91,10 @@ export const adminController = {
   }),
 
   skillGaps: asyncHandler(async (req: Request, res: Response) => {
-    const aggregated = await skillGapService.aggregatedTopGaps(Number(req.query.limit) || 15);
+    const aggregated = await skillGapService.aggregatedTopGaps(
+      Number(req.query.limit) || 15,
+      typeof req.query.department === 'string' && req.query.department ? req.query.department : undefined
+    );
     sendSuccess(res, { topGaps: aggregated }, 'Workforce skill gaps');
   }),
 
@@ -72,6 +111,28 @@ export const adminController = {
   updateCourse: asyncHandler(async (req: Request, res: Response) => {
     const course = await courseService.update(req.params.id, req.body, req.user!.id);
     sendSuccess(res, { course }, 'Course updated');
+  }),
+
+  /** Soft-deactivates a course (reversible via update with isActive:true). */
+  deleteCourse: asyncHandler(async (req: Request, res: Response) => {
+    const course = await courseService.deactivate(req.params.id);
+    const { audit } = await import('../middleware/audit.middleware');
+    void audit(req, 'COURSE_DEACTIVATED', 'course', req.params.id);
+    sendSuccess(res, { course }, 'Course deactivated');
+  }),
+
+  /** All quizzes in any status, for the admin/trainer question bank. */
+  quizzes: asyncHandler(async (req: Request, res: Response) => {
+    const { quizService } = await import('../services/quiz/quiz.service');
+    const result = await quizService.listForAdmin(req);
+    sendSuccess(res, result, 'Quizzes');
+  }),
+
+  /** Full quiz review (any owner) for admins. */
+  quizReview: asyncHandler(async (req: Request, res: Response) => {
+    const { quizService } = await import('../services/quiz/quiz.service');
+    const result = await quizService.reviewAny(req.params.id);
+    sendSuccess(res, result, 'Quiz review');
   }),
 
   syncCourses: asyncHandler(async (req: Request, res: Response) => {

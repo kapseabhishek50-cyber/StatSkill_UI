@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Users } from 'lucide-react';
 import GapBarChart from '../../components/GapBarChart.jsx';
 import Heatmap from '../../components/Heatmap.jsx';
 import { Card, Empty, ErrorNote, Loading, StatTile } from '../../components/ui.jsx';
 import { useApi } from '../../hooks/useApi.js';
 import { endpoints, percent } from '../../lib/index.js';
+import { topGapToRow } from '../../lib/adapters.js';
 
 /**
  * Workforce analytics.
@@ -18,15 +19,20 @@ export default function AdminDashboard() {
   const [division, setDivision] = useState('');
   const overview = useApi(endpoints.adminOverview);
   const heatmap = useApi(endpoints.adminHeatmap);
-  const gaps = useApi(`${endpoints.adminGaps}${division ? `?department=${division}` : ''}`, {
-    deps: [division],
-  });
+  const gaps = useApi(
+    `${endpoints.adminGaps}${division ? `?department=${encodeURIComponent(division)}` : ''}`,
+    { deps: [division] },
+  );
+
+  const rows = useMemo(
+    () => (gaps.data?.topGaps ?? []).map(topGapToRow),
+    [gaps.data],
+  );
 
   if (overview.loading) return <Loading label="Aggregating workforce data" />;
 
-  const stats = overview.data ?? {};
+  const stats = overview.data?.overview ?? {};
   const divisions = heatmap.data?.departments ?? [];
-  const rows = gaps.data?.rows ?? [];
 
   return (
     <div className="space-y-5">

@@ -67,7 +67,9 @@ export async function fetchPublicStats(timeoutMs = 5000) {
     const response = await fetch('/api/stats/public', { signal: controller.signal });
     clearTimeout(timer);
     if (!response.ok) throw new Error(String(response.status));
-    const data = await response.json();
+    const payload = await response.json();
+    // Unwrap the { success, data } envelope; tolerate bare payloads too.
+    const data = payload?.data ?? payload;
     if (!data?.stats) throw new Error('malformed payload');
     return { data, live: data.live === true };
   } catch {

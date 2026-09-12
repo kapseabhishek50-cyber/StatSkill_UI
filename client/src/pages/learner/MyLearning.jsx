@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   BookOpen,
   CheckCircle2,
@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useApi } from '../../hooks/useApi.js';
 import { endpoints } from '../../lib/index.js';
+import { enrollmentStats, enrollmentToItem } from '../../lib/adapters.js';
 import { Card, Empty, ErrorNote, Loading, StatTile } from '../../components/ui.jsx';
 
 export default function MyLearning() {
@@ -16,11 +17,14 @@ export default function MyLearning() {
   const [filter, setFilter] = useState('all'); // all | in_progress | completed
   const [search, setSearch] = useState('');
 
+  const enrollments = useMemo(
+    () => (learning.data?.items ?? []).map(enrollmentToItem),
+    [learning.data],
+  );
+  const stats = useMemo(() => enrollmentStats(enrollments), [enrollments]);
+
   if (learning.loading) return <Loading label="Loading your courses" />;
   if (learning.error) return <ErrorNote error={learning.error} onRetry={learning.refetch} />;
-
-  const stats = learning.data?.stats ?? { total: 0, completed: 0, inProgress: 0, totalHours: 0 };
-  const enrollments = learning.data?.enrollments ?? [];
 
   const filtered = enrollments.filter((item) => {
     const matchesFilter =

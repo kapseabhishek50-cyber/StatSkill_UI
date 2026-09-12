@@ -28,11 +28,9 @@ export default function Register() {
   const roles = useMemo(
     () =>
       (options.data?.jobRoles ?? []).filter(
-        (role) =>
-          !form.department ||
-          String(role.department?._id ?? role.department) === form.department
+        (role) => !form.department || String(role.department ?? '') === form.department,
       ),
-    [options.data, form.department]
+    [options.data, form.department],
   );
 
   if (status === 'loading') return <Loading label="Checking your session" />;
@@ -205,8 +203,8 @@ export default function Register() {
                   >
                     <option value="">Choose...</option>
                     {(options.data?.departments ?? []).map((dept) => (
-                      <option key={dept._id} value={dept._id}>
-                        {dept.name}
+                      <option key={dept} value={dept}>
+                        {dept}
                       </option>
                     ))}
                   </select>
@@ -227,7 +225,7 @@ export default function Register() {
                 >
                   <option value="">Choose role...</option>
                   {roles.map((role) => (
-                    <option key={role._id} value={role._id}>
+                    <option key={role._id ?? role.id} value={role._id ?? role.id}>
                       {role.title}
                     </option>
                   ))}

@@ -14,6 +14,7 @@ export interface RegisterInput {
   employeeId?: string;
   role?: UserRole;
   designation?: string;
+  jobRole?: string;
   department?: string;
   organization?: string;
   experience?: number;
@@ -36,14 +37,33 @@ export const authService = {
     const role: UserRole =
       requestedRole === 'TRAINER' ? 'TRAINER' : requestedRole === 'ADMIN' ? 'ADMIN' : 'LEARNER';
 
+    // A jobRole selection resolves to the designation string, which is what the
+    // gap engine matches against the Role requirement matrix.
+    let designation = input.designation?.trim();
+    let department = input.department?.trim();
+    if (input.jobRole?.trim()) {
+      const { Role } = await import('../../models/Role');
+      const wanted = input.jobRole.trim();
+      const roleDoc =
+        (await Role.findById(wanted).catch(() => null)) ??
+        (await Role.findOne({ $or: [{ name: wanted }, { code: wanted.toUpperCase() }] }));
+      if (roleDoc) {
+        designation = designation || roleDoc.name;
+        department = department || roleDoc.department;
+      } else {
+        // Unknown id — treat a plain name as the designation directly.
+        designation = designation || wanted;
+      }
+    }
+
     const user = await User.create({
       name: input.name.trim(),
       email,
       passwordHash: await hashPassword(input.password),
       employeeId: input.employeeId?.trim() || undefined,
       role,
-      designation: input.designation?.trim(),
-      department: input.department?.trim(),
+      designation,
+      department,
       organization: input.organization?.trim(),
       experience: input.experience,
       education: input.education,

@@ -37,8 +37,13 @@ const waitForPort = (port: number, host: string, timeoutMs = 30000): Promise<voi
  *   2. Fallback (binary download unavailable): EasyDB — a SQLite-backed
  *      MongoDB-compatible server, pure Node (same approach as the prototype).
  * The application cannot tell the difference for this app's queries.
+ *
+ * An explicit `dataDir` (used by devDb.ts) persists across restarts so seeded
+ * demo data survives; otherwise an ephemeral directory is used and wiped.
  */
-export const startDevMongo = async (opts: { dbName: string; dataDir?: string; port?: number } = { dbName: 'statskill' }): Promise<DevMongoHandle> => {
+export const startDevMongo = async (
+  opts: { dbName: string; dataDir?: string; port?: number; persistent?: boolean } = { dbName: 'statskill' }
+): Promise<DevMongoHandle> => {
   // 1) Real mongod (in-memory) when the binary can be fetched.
   try {
     const { MongoMemoryServer } = await import('mongodb-memory-server');
@@ -62,6 +67,7 @@ export const startDevMongo = async (opts: { dbName: string; dataDir?: string; po
   const pkgJsonPath = req.resolve('@rckflr/easydb-server/package.json');
   const binPath = path.join(path.dirname(pkgJsonPath), 'bin', 'easydb-server.js');
   const port = opts.port ?? (20000 + Math.floor(Math.random() * 20000));
+  const ephemeral = !opts.dataDir && !opts.persistent;
   const dataDir = opts.dataDir ?? path.resolve(process.cwd(), '.dev-data', crypto.randomBytes(4).toString('hex'));
   fs.mkdirSync(dataDir, { recursive: true });
 
@@ -84,10 +90,12 @@ export const startDevMongo = async (opts: { dbName: string; dataDir?: string; po
         child.once('exit', () => resolve());
         setTimeout(resolve, 2000).unref();
       });
-      try {
-        fs.rmSync(dataDir, { recursive: true, force: true });
-      } catch {
-        // best effort
+      if (ephemeral) {
+        try {
+          fs.rmSync(dataDir, { recursive: true, force: true });
+        } catch {
+          // best effort
+        }
       }
     },
   };

@@ -1,32 +1,34 @@
-import { useState } from 'react';
-import { BookOpen, Pencil, Plus, Trash2 } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { Card, Empty, ErrorNote, Loading } from '../../components/ui.jsx';
 import { useApi, useMutation } from '../../hooks/useApi.js';
 import { api, endpoints } from '../../lib/index.js';
+
+const LEVELS = ['BEGINNER', 'INTERMEDIATE', 'ADVANCED'];
+const PROVIDERS = ['NSSTA', 'iGOT Karmayogi', 'MoSPI', 'INTERNAL'];
 
 export default function Courses() {
   const [provider, setProvider] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [currentCourse, setCurrentCourse] = useState(null);
-  const [mappings, setMappings] = useState([]);
+  const [skillCodes, setSkillCodes] = useState([]);
 
-  const query = provider ? `?provider=${encodeURIComponent(provider)}` : '';
-  const { data, loading, error, refetch } = useApi(`${endpoints.adminCourses}${query}`, { deps: [provider] });
+  const { data, loading, error, refetch } = useApi(endpoints.adminCourses);
   const competenciesQuery = useApi(endpoints.competencies);
 
   const saveCourse = useMutation(async (courseData) => {
     if (currentCourse?._id) {
-      await api.patch(`${endpoints.adminCourses}/${currentCourse._id}`, courseData);
+      await api.patch(`${endpoints.adminCourses.split('?')[0]}/${currentCourse._id}`, courseData);
     } else {
-      await api.post(endpoints.adminCourses, courseData);
+      await api.post(endpoints.adminCourses.split('?')[0], courseData);
     }
   });
 
   const toggleStatus = useMutation(async (courseId, isActive) => {
     if (isActive) {
-      await api.del(`${endpoints.adminCourses}/${courseId}`);
+      await api.del(`${endpoints.adminCourses.split('?')[0]}/${courseId}`);
     } else {
-      await api.patch(`${endpoints.adminCourses}/${courseId}`, { isActive: true });
+      await api.patch(`${endpoints.adminCourses.split('?')[0]}/${courseId}`, { isActive: true });
     }
   });
 
@@ -34,29 +36,23 @@ export default function Courses() {
     e.preventDefault();
     const formData = new FormData(e.target);
     const payload = {
-      code: formData.get('code'),
       title: formData.get('title'),
       provider: formData.get('provider'),
-      url: formData.get('url'),
+      category: formData.get('category'),
+      level: formData.get('level'),
+      url: formData.get('url') || undefined,
       description: formData.get('description'),
-      durationHours: Number(formData.get('durationHours')),
-      modality: formData.get('modality'),
-      tags: formData.get('tags').split(',').map((t) => t.trim()).filter(Boolean),
-      rating: Number(formData.get('rating')),
-      isActive: currentCourse?.isActive ?? true,
-      competencies: mappings
-        .filter((mapping) => mapping.competency)
-        .map((mapping) => ({
-          competency: mapping.competency,
-          targetLevel: Number(mapping.targetLevel),
-          weight: Number(mapping.weight),
-        })),
+      durationHours: Number(formData.get('durationHours')) || 4,
+      tags: String(formData.get('tags') ?? '').split(',').map((t) => t.trim()).filter(Boolean),
+      rating: Number(formData.get('rating')) || 4,
+      skills: skillCodes,
     };
 
     try {
       await saveCourse.run(payload);
       setIsEditing(false);
       setCurrentCourse(null);
+      setSkillCodes([]);
       refetch();
     } catch (err) {
       // Error handled by hook
@@ -65,11 +61,7 @@ export default function Courses() {
 
   const handleEdit = (course) => {
     setCurrentCourse(course);
-    setMappings((course.competencies ?? []).map((mapping) => ({
-      competency: String(mapping.competency?._id ?? mapping.competency),
-      targetLevel: mapping.targetLevel,
-      weight: mapping.weight ?? 1,
-    })));
+    setSkillCodes([...(course.skills ?? [])]);
     setIsEditing(true);
   };
 
@@ -82,21 +74,33 @@ export default function Courses() {
     }
   };
 
-  const courses = data?.courses ?? [];
+  const allCourses = useMemo(() => data?.items ?? data?.courses ?? [], [data]);
+  const courses = useMemo(
+    () => (provider ? allCourses.filter((c) => c.provider === provider) : allCourses),
+    [allCourses, provider],
+  );
+  const providerOptions = useMemo(
+    () => [...new Set([...PROVIDERS, ...allCourses.map((c) => c.provider).filter(Boolean)])],
+    [allCourses],
+  );
+  const competencyOptions = useMemo(
+    () => competenciesQuery.data?.competencies ?? [],
+    [competenciesQuery.data],
+  );
 
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold text-ink">Course catalog</h1>
-          <p className="mt-1 text-sm text-ink-2">Manage available learning resources and their mappings.</p>
+          <p className="mt-1 text-sm text-ink-2">Manage available learning resources and their skill mappings.</p>
         </div>
         <button
           type="button"
           className="btn btn-primary"
           onClick={() => {
             setCurrentCourse(null);
-            setMappings([]);
+            setSkillCodes([]);
             setIsEditing(true);
           }}
         >
@@ -116,10 +120,9 @@ export default function Courses() {
               onChange={(e) => setProvider(e.target.value)}
             >
               <option value="">All providers</option>
-              <option value="iGOT">iGOT</option>
-              <option value="NSSTA">NSSTA</option>
-              <option value="internal">Internal</option>
-              <option value="other">Other</option>
+              {providerOptions.map((name) => (
+                <option key={name} value={name}>{name}</option>
+              ))}
             </select>
           </div>
         </div>
@@ -134,22 +137,21 @@ export default function Courses() {
         <Card title={currentCourse ? 'Edit course' : 'New course'} className="max-w-3xl">
           <form onSubmit={handleSubmit} className="space-y-4 mt-2">
             <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="label">Code</label>
-                <input required name="code" className="field mt-1 w-full" defaultValue={currentCourse?.code} placeholder="e.g. IGOT-101" />
-              </div>
-              <div>
+              <div className="sm:col-span-2">
                 <label className="label">Title</label>
                 <input required name="title" className="field mt-1 w-full" defaultValue={currentCourse?.title} />
               </div>
               <div>
                 <label className="label">Provider</label>
-                <select required name="provider" className="field mt-1 w-full" defaultValue={currentCourse?.provider || 'iGOT'}>
-                  <option value="iGOT">iGOT</option>
-                  <option value="NSSTA">NSSTA</option>
-                  <option value="internal">Internal</option>
-                  <option value="other">Other</option>
+                <select required name="provider" className="field mt-1 w-full" defaultValue={currentCourse?.provider || 'NSSTA'}>
+                  {providerOptions.map((name) => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
                 </select>
+              </div>
+              <div>
+                <label className="label">Category</label>
+                <input required name="category" className="field mt-1 w-full" defaultValue={currentCourse?.category} placeholder="e.g. Statistical Methods" />
               </div>
               <div>
                 <label className="label">URL</label>
@@ -157,81 +159,61 @@ export default function Courses() {
               </div>
               <div>
                 <label className="label">Duration (hours)</label>
-                <input type="number" step="0.5" min="0" name="durationHours" className="field mt-1 w-full" defaultValue={currentCourse?.durationHours || 1} />
+                <input type="number" step="0.5" min="0" name="durationHours" className="field mt-1 w-full" defaultValue={currentCourse?.durationHours || 4} />
               </div>
               <div>
-                <label className="label">Modality</label>
-                <select name="modality" className="field mt-1 w-full" defaultValue={currentCourse?.modality || 'self_paced'}>
-                  <option value="self_paced">Self-paced</option>
-                  <option value="instructor_led">Instructor-led</option>
-                  <option value="blended">Blended</option>
+                <label className="label">Level</label>
+                <select name="level" className="field mt-1 w-full" defaultValue={currentCourse?.level || 'BEGINNER'}>
+                  {LEVELS.map((level) => (
+                    <option key={level} value={level}>{level.charAt(0) + level.slice(1).toLowerCase()}</option>
+                  ))}
                 </select>
               </div>
               <div>
-                <label className="label">Tags (comma-separated)</label>
-                <input name="tags" className="field mt-1 w-full" defaultValue={currentCourse?.tags?.join(', ')} placeholder="policy, leadership" />
+                <label className="label">Rating (0-5)</label>
+                <input type="number" min="0" max="5" step="0.1" name="rating" className="field mt-1 w-full" defaultValue={currentCourse?.rating ?? 4.0} />
               </div>
-              <div>
-                <label className="label">Initial Rating (1-5)</label>
-                <input type="number" min="1" max="5" step="0.1" name="rating" className="field mt-1 w-full" defaultValue={currentCourse?.rating || 4.0} />
+              <div className="sm:col-span-2">
+                <label className="label">Tags (comma-separated)</label>
+                <input name="tags" className="field mt-1 w-full" defaultValue={currentCourse?.tags?.join(', ')} placeholder="sampling, estimation" />
               </div>
             </div>
-            
+
             <div>
-              <label className="label">Description</label>
-              <textarea name="description" rows="3" className="field mt-1 w-full" defaultValue={currentCourse?.description}></textarea>
+              <label className="label">Description (min 10 characters)</label>
+              <textarea required minLength={10} name="description" rows="3" className="field mt-1 w-full" defaultValue={currentCourse?.description}></textarea>
             </div>
 
             <div>
               <div className="flex items-center justify-between gap-3">
-                <label className="label">Competency mappings</label>
-                <button
-                  type="button"
-                  className="text-xs font-medium text-ink underline"
-                  onClick={() => setMappings([...mappings, { competency: '', targetLevel: 1, weight: 1 }])}
-                >
-                  Add mapping
-                </button>
+                <label className="label">Skill mappings (competency codes)</label>
+                <span className="text-[11px] text-ink-muted">{skillCodes.length} mapped</span>
               </div>
-              <div className="mt-2 space-y-2">
-                {mappings.map((mapping, index) => (
-                  <div key={`${index}-${mapping.competency}`} className="grid gap-2 sm:grid-cols-[1fr_7rem_6rem_auto]">
-                    <select
-                      className="field"
-                      value={mapping.competency}
-                      onChange={(event) => setMappings(mappings.map((entry, i) => i === index ? { ...entry, competency: event.target.value } : entry))}
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {competencyOptions.map((competency) => {
+                  const active = skillCodes.includes(competency.code);
+                  return (
+                    <button
+                      key={competency._id}
+                      type="button"
+                      title={competency.name}
+                      onClick={() =>
+                        setSkillCodes((current) =>
+                          active ? current.filter((code) => code !== competency.code) : [...current, competency.code],
+                        )
+                      }
+                      className={`rounded-pill border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                        active
+                          ? 'border-primary bg-primary text-white'
+                          : 'border-hairline bg-plane text-ink-2 hover:border-primary-border'
+                      }`}
                     >
-                      <option value="">Choose competency</option>
-                      {(competenciesQuery.data?.competencies ?? []).map((competency) => (
-                        <option key={competency._id} value={competency._id}>{competency.name}</option>
-                      ))}
-                    </select>
-                    <input
-                      type="number"
-                      min="0"
-                      max="5"
-                      className="field"
-                      value={mapping.targetLevel}
-                      aria-label={`Target level ${index + 1}`}
-                      onChange={(event) => setMappings(mappings.map((entry, i) => i === index ? { ...entry, targetLevel: event.target.value } : entry))}
-                    />
-                    <input
-                      type="number"
-                      min="0"
-                      max="1"
-                      step="0.1"
-                      className="field"
-                      value={mapping.weight}
-                      aria-label={`Weight ${index + 1}`}
-                      onChange={(event) => setMappings(mappings.map((entry, i) => i === index ? { ...entry, weight: event.target.value } : entry))}
-                    />
-                    <button type="button" className="px-2 text-xs text-ink-muted hover:text-ink" onClick={() => setMappings(mappings.filter((_entry, i) => i !== index))}>
-                      Remove
+                      {competency.code}
                     </button>
-                  </div>
-                ))}
-                {!mappings.length && <p className="text-xs text-ink-muted">Add at least one mapping for this course to appear in learning recommendations.</p>}
+                  );
+                })}
               </div>
+              {!skillCodes.length && <p className="mt-2 text-xs text-ink-muted">Map at least one skill for this course to appear in learning recommendations.</p>}
             </div>
 
             <div className="flex gap-3 pt-2">
@@ -248,7 +230,7 @@ export default function Courses() {
                 onClick={() => {
                   setIsEditing(false);
                   setCurrentCourse(null);
-                  setMappings([]);
+                  setSkillCodes([]);
                 }}
               >
                 Cancel
@@ -265,12 +247,11 @@ export default function Courses() {
               <table className="table-enterprise w-full text-left text-[13px] text-ink-2">
                 <thead className="border-b border-hairline text-xs uppercase text-ink-muted">
                   <tr>
-                    <th className="pb-3 pr-4 font-medium">Code</th>
                     <th className="pb-3 pr-4 font-medium">Title</th>
                     <th className="pb-3 pr-4 font-medium">Provider</th>
-                    <th className="pb-3 pr-4 font-medium">Duration</th>
-                    <th className="pb-3 pr-4 font-medium">Modality</th>
-                    <th className="pb-3 pr-4 font-medium">Competencies</th>
+                    <th className="pb-3 pr-4 font-medium">Category</th>
+                    <th className="pb-3 pr-4 font-medium">Level</th>
+                    <th className="pb-3 pr-4 font-medium">Skills</th>
                     <th className="pb-3 pr-4 font-medium">Status</th>
                     <th className="pb-3 font-medium text-right">Actions</th>
                   </tr>
@@ -280,14 +261,14 @@ export default function Courses() {
                     const isActive = course.isActive ?? true;
                     return (
                       <tr key={course._id} className={isActive ? '' : 'opacity-60'}>
-                        <td className="py-3 pr-4 font-medium text-ink">{course.code}</td>
-                        <td className="py-3 pr-4 max-w-[200px] truncate" title={course.title}>
-                          {course.title}
+                        <td className="py-3 pr-4 max-w-[220px]">
+                          <span className="block truncate font-medium text-ink" title={course.title}>{course.title}</span>
+                          <span className="text-[11px] text-ink-muted">{course.durationHours}h</span>
                         </td>
-                        <td className="py-3 pr-4 capitalize">{course.provider}</td>
-                        <td className="py-3 pr-4">{course.durationHours}h</td>
-                        <td className="py-3 pr-4 capitalize">{course.modality}</td>
-                        <td className="py-3 pr-4">{course.competencies?.length || 0} mapped</td>
+                        <td className="py-3 pr-4">{course.provider}</td>
+                        <td className="py-3 pr-4">{course.category}</td>
+                        <td className="py-3 pr-4 capitalize">{String(course.level ?? '').toLowerCase()}</td>
+                        <td className="py-3 pr-4">{course.skills?.length || 0} mapped</td>
                         <td className="py-3 pr-4">
                           {isActive ? (
                             <span className="pill pill-success">

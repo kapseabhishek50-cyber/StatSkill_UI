@@ -15,6 +15,8 @@ export interface GenerateQuizInput {
   topic?: string;
   competencyCode?: string;
   count?: number;
+  difficulty?: 'easy' | 'medium' | 'hard';
+  language?: 'english' | 'hindi';
   createdBy: string;
 }
 
@@ -78,7 +80,8 @@ export const quizGeneratorService = {
           competencyName,
           count,
           facts: facts.length ? facts : [`General knowledge assessment for ${topic}.`],
-          difficultyMix: 'mixed',
+          difficultyMix: input.difficulty === 'easy' ? 'easy' : input.difficulty === 'hard' ? 'hard' : 'mixed',
+          language: input.language ?? 'english',
         });
         questions = aiQuestions.map((q, i) => ({
           questionId: `q${Date.now().toString(36)}${i}`,
