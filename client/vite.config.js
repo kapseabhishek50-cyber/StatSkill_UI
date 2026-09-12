@@ -24,7 +24,11 @@ export default defineConfig({
     allowedHosts: true,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:4000',
+        // Both backends expose the same /api surface, including GET
+        // /api/stats/public, so pointing the landing page at the TypeScript
+        // API is an env var rather than a code edit:
+        //   VITE_API_PROXY_TARGET=http://127.0.0.1:5000 npm run dev
+        target: process.env.VITE_API_PROXY_TARGET ?? 'http://127.0.0.1:4000',
         changeOrigin: true,
       },
     },

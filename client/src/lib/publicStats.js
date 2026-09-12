@@ -59,6 +59,12 @@ export const FALLBACK_STATS = {
 /**
  * Fetches the public stats with a hard timeout. Never throws.
  * Returns { data, live } where live=false means the bundled snapshot is shown.
+ *
+ * Two backends serve this contract: the prototype API answers with the bare
+ * payload, the TypeScript API does the same but wraps nothing. We still unwrap
+ * `{ success, data }` defensively — a wrapped response would otherwise fail the
+ * shape check and silently fall back to the snapshot, which looks like a dead
+ * database rather than a contract break.
  */
 export async function fetchPublicStats(timeoutMs = 5000) {
   try {
@@ -67,8 +73,9 @@ export async function fetchPublicStats(timeoutMs = 5000) {
     const response = await fetch('/api/stats/public', { signal: controller.signal });
     clearTimeout(timer);
     if (!response.ok) throw new Error(String(response.status));
-    const data = await response.json();
-    if (!data?.stats) throw new Error('malformed payload');
+    const body = await response.json();
+    const data = body?.stats ? body : body?.data?.stats ? body.data : null;
+    if (!data) throw new Error('malformed payload');
     return { data, live: data.live === true };
   } catch {
     return { data: FALLBACK_STATS, live: false };
