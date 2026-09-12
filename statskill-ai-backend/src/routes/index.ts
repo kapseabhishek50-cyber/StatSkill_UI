@@ -19,6 +19,7 @@ import trainerRoutes from './trainer.routes';
 import adminRoutes from './admin.routes';
 import healthRoutes from './health.routes';
 import searchRoutes from './search.routes';
+import publicStatsRoutes from './publicStats.routes';
 
 const router = Router();
 
@@ -42,5 +43,8 @@ router.use('/trainer', trainerRoutes);
 router.use('/admin', adminRoutes);
 router.use('/search', searchRoutes);
 router.use('/health', healthRoutes);
+
+// Public landing-page numbers — no auth, safe to embed in the marketing site.
+router.use('/stats', publicStatsRoutes);
 
 export default router;

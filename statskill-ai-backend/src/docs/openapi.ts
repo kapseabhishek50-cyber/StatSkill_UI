@@ -47,6 +47,71 @@ export const openApiSpec = {
     },
     schemas: {
       ErrorEnvelope: errorEnvelope,
+      PublicStatsResponse: {
+        type: 'object',
+        required: ['live', 'source', 'generatedAt', 'stats'],
+        properties: {
+          live: { type: 'boolean', description: 'True when the numbers are real database counts.', example: true },
+          source: { type: 'string', enum: ['database', 'snapshot'] },
+          generatedAt: { type: 'string', format: 'date-time' },
+          stats: {
+            type: 'object',
+            properties: {
+              officers: { type: 'integer', description: 'Active user accounts' },
+              competencies: { type: 'integer', description: 'Active competencies in the framework' },
+              courses: { type: 'integer', description: 'Active courses in the catalogue' },
+              departments: { type: 'integer', description: 'Distinct departments with at least one member' },
+              jobRoles: { type: 'integer', description: 'Active roles in the requirement matrix' },
+              assessments: { type: 'integer', description: 'Completed assessments' },
+              quizzes: { type: 'integer', description: 'Recorded quiz attempts' },
+              competencyRecords: { type: 'integer', description: 'Measured officer-competency scores' },
+              communities: { type: 'integer', description: 'Active learning communities' },
+            },
+          },
+          competencies: {
+            type: 'array',
+            description: 'Up to 16 framework entries for the landing-page ticker.',
+            items: {
+              type: 'object',
+              properties: {
+                code: { type: 'string', example: 'AI_ML' },
+                name: { type: 'string', example: 'AI/ML' },
+                category: { type: 'string', enum: ['STATISTICAL', 'TECHNICAL', 'DIGITAL_GOVERNANCE', 'BEHAVIOURAL'] },
+              },
+            },
+          },
+          categories: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: { category: { type: 'string' }, count: { type: 'integer' } },
+            },
+          },
+          courses: {
+            type: 'array',
+            description: 'Up to 12 highest-rated catalogue entries.',
+            items: {
+              type: 'object',
+              properties: {
+                code: { type: 'string', description: 'externalId when present, else a slug of the title' },
+                title: { type: 'string' },
+                provider: { type: 'string', example: 'NSSTA' },
+                rating: { type: 'number' },
+                durationHours: { type: 'number' },
+                level: { type: 'string', enum: ['BEGINNER', 'INTERMEDIATE', 'ADVANCED'] },
+              },
+            },
+          },
+          health: {
+            type: 'object',
+            properties: {
+              db: { type: 'string', enum: ['up', 'down'] },
+              aiProvider: { type: 'string', enum: ['gemini', 'openai', 'mock'] },
+              aiConfigured: { type: 'boolean' },
+            },
+          },
+        },
+      },
       LoginRequest: {
         type: 'object',
         required: ['email', 'password'],
@@ -174,8 +239,30 @@ export const openApiSpec = {
     { name: 'Admin', description: 'Admin features + analytics' },
     { name: 'Search', description: 'Global search' },
     { name: 'Health', description: 'Health checks' },
+    { name: 'Public Stats', description: 'Unauthenticated landing-page numbers' },
   ],
   paths: {
+    '/api/stats/public': {
+      get: {
+        tags: ['Public Stats'],
+        summary: 'Public platform snapshot for the landing page',
+        description:
+          'Unauthenticated aggregate counts (officers, competencies, courses, departments, job roles, ' +
+          'assessments, quiz attempts, competency records, communities) plus framework and catalogue previews. ' +
+          'Answers 200 with a bundled seed snapshot and `live: false` when MongoDB is unreachable, so the ' +
+          'public page never errors. Returns the bare payload (not the success envelope) because it is read ' +
+          'directly by a plain fetch on the marketing site.',
+        security: [],
+        responses: {
+          200: {
+            description: 'Public stats payload (live database counts, or seed snapshot when DB is down)',
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/PublicStatsResponse' } },
+            },
+          },
+        },
+      },
+    },
     '/api/health': {
       get: { tags: ['Health'], summary: 'Liveness probe', security: [], responses: { 200: { description: 'OK' } } },
     },
